@@ -1,0 +1,18 @@
+namespace HL2UnityPlugin
+{
+    runtimeclass HL2ResearchMode
+    {
+        HL2ResearchMode();
+        UInt16 GetCenterDepth();
+        UInt16[] GetDepthMapBuffer();
+        UInt8[] GetDepthMapTextureBuffer();
+        Int32 GetBufferSize();
+        String PrintResolution();
+        Boolean DepthMapTextureUpdated();
+        void InitializeDepthSensor();
+        void StartDepthSensorLoop();
+        void StartDepthSensorOnce();
+        void PauseSensorsAndFreeSpace();
+        void StopAllSensorDevice();
+    }
+}
