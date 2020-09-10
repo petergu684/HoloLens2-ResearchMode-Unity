@@ -50,7 +50,6 @@ namespace winrt::HL2UnityPlugin::implementation
         
         size_t sensorCount = 0;
 
-        //hr = CreateResearchModeSensorDevice(&pSensorDevice);
         winrt::check_hresult(m_pSensorDevice->QueryInterface(IID_PPV_ARGS(&m_pSensorDeviceConsent)));
         winrt::check_hresult(m_pSensorDeviceConsent->RequestCamAccessAsync(HL2ResearchMode::CamAccessOnComplete));
         
@@ -86,6 +85,7 @@ namespace winrt::HL2UnityPlugin::implementation
 
     void HL2ResearchMode::DepthSensorLoop(HL2ResearchMode* pHL2ResearchMode)
     {
+        // prevent starting loop for multiple times
         if (!pHL2ResearchMode->m_depthSensorLoopStarted)
         {
             pHL2ResearchMode->m_depthSensorLoopStarted = true;
@@ -125,27 +125,22 @@ namespace winrt::HL2UnityPlugin::implementation
 
                 auto ts = PerceptionTimestampHelper::FromSystemRelativeTargetTime(HundredsOfNanoseconds(checkAndConvertUnsigned(timestamp.HostTicks)));
                 auto transToWorld = pHL2ResearchMode->m_locator.TryLocateAtTimestamp(ts, pHL2ResearchMode->m_refFrame);
-                OutputDebugString(L"\nLocated where the sensor is...\n");
                 if (transToWorld == nullptr)
                 {
                     continue;
                 }
                 auto rot = transToWorld.Orientation();
-                OutputDebugString(L"Get the orientation\n");
-                {
+                /*{
                     std::stringstream ss;
                     ss << rot.x << "," << rot.y << "," << rot.z << "," << rot.w << "\n";
                     std::string msg = ss.str();
                     std::wstring widemsg = std::wstring(msg.begin(), msg.end());
                     OutputDebugString(widemsg.c_str());
-                }
+                }*/
                 auto quatInDx = XMFLOAT4(rot.x, rot.y, rot.z, rot.w);
-                OutputDebugString(L"Converted to xmfloat4\n");
                 auto rotMat = XMMatrixRotationQuaternion(XMLoadFloat4(&quatInDx));
-                OutputDebugString(L"Generated rotation matrix...\n");
                 auto pos = transToWorld.Position();
                 auto posMat = XMMatrixTranslation(pos.x, pos.y, pos.z);
-                OutputDebugString(L"Generated translational matrix...\n");
                 auto depthToWorld = pHL2ResearchMode->m_depthCameraPoseInvMatrix * rotMat * posMat;
 
                 for (UINT i = 0; i < resolution.Height; i++)
@@ -179,15 +174,15 @@ namespace winrt::HL2UnityPlugin::implementation
                         else { pDepthTexture.get()[idx] = (uint8_t)((float)depth / 1000 * 255); }
 
                         // save the depth of center pixel
-                        if (i == (UINT)(0.5 * resolution.Height) && j == (UINT)(0.5 * resolution.Width))
+                        if (i == (UINT)(0.35 * resolution.Height) && j == (UINT)(0.5 * resolution.Width))
                         {
                             pHL2ResearchMode->m_centerDepth = depth;
                             if (depth > pHL2ResearchMode->depthCamRoi.depthNearClip && depth < pHL2ResearchMode->depthCamRoi.depthFarClip)
                             {
                                 std::lock_guard<std::mutex> l(pHL2ResearchMode->mu);
-                                //pHL2ResearchMode->m_centerPoint[0] = *(pointCloud.end() - 3);
-                                //pHL2ResearchMode->m_centerPoint[1] = *(pointCloud.end() - 2);
-                                //pHL2ResearchMode->m_centerPoint[2] = *(pointCloud.end() - 1);
+                                pHL2ResearchMode->m_centerPoint[0] = *(pointCloud.end() - 3);
+                                pHL2ResearchMode->m_centerPoint[1] = *(pointCloud.end() - 2);
+                                pHL2ResearchMode->m_centerPoint[2] = *(pointCloud.end() - 1);
                             }
                             
                         }
@@ -205,9 +200,6 @@ namespace winrt::HL2UnityPlugin::implementation
                         pHL2ResearchMode->m_pointCloud = new float[outBufferCount * 3];
                     }
 
-                    /*wchar_t msgbuf[40];
-                    swprintf_s(msgbuf, 40, L"Point Cloud Size: %d\n", pointCloud.size());
-                    OutputDebugString(msgbuf);*/
                     memcpy(pHL2ResearchMode->m_pointCloud, pointCloud.data(), pointCloud.size() * sizeof(float));
                     pHL2ResearchMode->m_pointcloudLength = pointCloud.size();
 
@@ -247,8 +239,11 @@ namespace winrt::HL2UnityPlugin::implementation
         catch (...)  {}
         pHL2ResearchMode->m_depthSensor->CloseStream();
         pHL2ResearchMode->m_depthSensor->Release();
+        pHL2ResearchMode->m_depthSensor = nullptr;
         pHL2ResearchMode->m_pSensorDevice->Release();
+        pHL2ResearchMode->m_pSensorDevice = nullptr;
         pHL2ResearchMode->m_pSensorDeviceConsent->Release();
+        pHL2ResearchMode->m_pSensorDeviceConsent = nullptr;
     }
 
     void HL2ResearchMode::CamAccessOnComplete(ResearchModeSensorConsent consent)
@@ -313,8 +308,10 @@ namespace winrt::HL2UnityPlugin::implementation
         }
         if (m_pointCloud) 
         {
+            m_pointcloudLength = 0;
             delete[] m_pointCloud;
             m_pointCloud = nullptr;
+            
         }
     }
 

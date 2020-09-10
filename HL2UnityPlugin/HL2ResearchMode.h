@@ -46,9 +46,9 @@ namespace winrt::HL2UnityPlugin::implementation
         IResearchModeSensor* m_depthSensor = nullptr;
         IResearchModeCameraSensor* m_pDepthCameraSensor = nullptr;
         ResearchModeSensorResolution m_resolution;
-        IResearchModeSensorDevice* m_pSensorDevice;
+        IResearchModeSensorDevice* m_pSensorDevice = nullptr;
         std::vector<ResearchModeSensorDescriptor> m_sensorDescriptors;
-        IResearchModeSensorDeviceConsent* m_pSensorDeviceConsent;
+        IResearchModeSensorDeviceConsent* m_pSensorDeviceConsent = nullptr;
         Windows::Perception::Spatial::SpatialLocator m_locator = 0;
         Windows::Perception::Spatial::SpatialCoordinateSystem m_refFrame = nullptr;
         std::atomic_int m_bufferSize = 0;
