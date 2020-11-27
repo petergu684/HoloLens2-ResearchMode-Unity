@@ -8,6 +8,7 @@ namespace HL2UnityPlugin
         UInt8[] GetDepthMapTextureBuffer();
         Single[] GetPointCloudBuffer();
         Single[] GetCenterPoint();
+        Single[] GetDepthSendorPosition();
         Int32 GetBufferSize();
         String PrintResolution();
         String PrintDepthExtrinsics();
@@ -17,5 +18,7 @@ namespace HL2UnityPlugin
         void StartDepthSensorLoop();
         void StopAllSensorDevice();
         void SetReferenceCoordinateSystem(Windows.Perception.Spatial.SpatialCoordinateSystem refCoord);
+        void SetPointCloudRoiInSpace(Single centerX, Single centerY, Single centerZ, Single boundX, Single boundY, Single boundZ);
+        void SetPointCloudDepthOffset(UInt16 offset);
     }
 }

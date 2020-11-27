@@ -31,10 +31,13 @@ namespace winrt::HL2UnityPlugin::implementation
         bool DepthMapTextureUpdated();
         bool PointCloudUpdated();
         void SetReferenceCoordinateSystem(Windows::Perception::Spatial::SpatialCoordinateSystem refCoord);
+        void SetPointCloudRoiInSpace(float centerX, float centerY, float centerZ, float boundX, float boundY, float boundZ);
+        void SetPointCloudDepthOffset(uint16_t offset);
         com_array<uint16_t> GetDepthMapBuffer();
         com_array<uint8_t> GetDepthMapTextureBuffer();
         com_array<float> GetPointCloudBuffer();
         com_array<float> GetCenterPoint();
+        com_array<float> GetDepthSendorPosition();
         std::mutex mu;
         
         
@@ -53,10 +56,14 @@ namespace winrt::HL2UnityPlugin::implementation
         Windows::Perception::Spatial::SpatialCoordinateSystem m_refFrame = nullptr;
         std::atomic_int m_bufferSize = 0;
         std::atomic_uint16_t m_centerDepth = 0;
-        float m_centerPoint[3];
+        float m_centerPoint[3]{ 0,0,0 };
+        float m_depthSensorPosition[3]{ 0,0,0 };
         std::atomic_bool m_depthSensorLoopStarted = false;
         std::atomic_bool m_depthMapTextureUpdated = false;
         std::atomic_bool m_pointCloudUpdated = false;
+        std::atomic_bool m_useRoiFilter = false;
+        float m_roiBound[3]{ 0,0,0 };
+        float m_roiCenter[3]{ 0,0,0 };
         static void DepthSensorLoop(HL2ResearchMode* pHL2ResearchMode);
         static void CamAccessOnComplete(ResearchModeSensorConsent consent);
         std::string MatrixToString(DirectX::XMFLOAT4X4 mat);
@@ -72,6 +79,7 @@ namespace winrt::HL2UnityPlugin::implementation
             UINT16 depthNearClip = 200; // Unit: mm
             UINT16 depthFarClip = 800;
         } depthCamRoi;
+        UINT16 m_depthOffset = 0;
     };
 }
 namespace winrt::HL2UnityPlugin::factory_implementation
