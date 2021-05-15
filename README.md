@@ -17,5 +17,4 @@ To use it in Unity,
 - To visualize the depth image, you need a grayscale shader applied to your preview plane. Example: [grayscale shader](https://github.com/qian256/HoloLensARToolKit/blob/master/HoloLensARToolKit/Assets/Sample/Grayscale.shader).
 - For point cloud, current implementation only returns the reconstructed point cloud as a float array (in the format of x,y,z,x,y,z,...). If you want to visualize it, I find [this project](https://github.com/MarekKowalski/LiveScan3D-Hololens) is a good example.
 - This project is mainly to show how to use Reseach Mode in Unity. I only provided implementation on AHAT camera image visualization and point cloud reconstruction (based on depth map of AHAT camera). Feel free to modify the code according to your own need.
-- If you need some sample script to get started, you can refer to [here](https://github.com/petergu684/HoloLens2-ResearchMode-Unity/issues/1#issuecomment-689762815).
-
+- If you need a sample project to get started, you can refer to UnitySample folder.
