@@ -19,57 +19,91 @@ namespace winrt::HL2UnityPlugin::implementation
 {
     struct HL2ResearchMode : HL2ResearchModeT<HL2ResearchMode>
     {
-        HL2ResearchMode() = default;
+        HL2ResearchMode();
 
         UINT16 GetCenterDepth();
-        int GetBufferSize();
-        hstring PrintResolution();
+        int GetDepthBufferSize();
+        hstring PrintDepthResolution();
         hstring PrintDepthExtrinsics();
+		hstring PrintLFResolution();
+		hstring PrintLFExtrinsics();
+		hstring PrintRFResolution();
+		hstring PrintRFExtrinsics();
+
         void InitializeDepthSensor();
+        void InitializeSpatialCamerasFront();
+
         void StartDepthSensorLoop();
+        void StartSpatialCamerasFrontLoop();
+
         void StopAllSensorDevice();
+
         bool DepthMapTextureUpdated();
         bool PointCloudUpdated();
+		bool LFImageUpdated();
+		bool RFImageUpdated();
+
         void SetReferenceCoordinateSystem(Windows::Perception::Spatial::SpatialCoordinateSystem refCoord);
         void SetPointCloudRoiInSpace(float centerX, float centerY, float centerZ, float boundX, float boundY, float boundZ);
         void SetPointCloudDepthOffset(uint16_t offset);
         com_array<uint16_t> GetDepthMapBuffer();
         com_array<uint8_t> GetDepthMapTextureBuffer();
+		com_array<uint8_t> GetLFCameraBuffer();
+		com_array<uint8_t> GetRFCameraBuffer();
         com_array<float> GetPointCloudBuffer();
         com_array<float> GetCenterPoint();
-        com_array<float> GetDepthSendorPosition();
+        com_array<float> GetDepthSensorPosition();
         std::mutex mu;
-        
-        
+
     private:
         float* m_pointCloud = nullptr;
         int m_pointcloudLength = 0;
         UINT16* m_depthMap = nullptr;
         UINT8* m_depthMapTexture = nullptr;
+		UINT8* m_LFImage = nullptr;
+		UINT8* m_RFImage = nullptr;
         IResearchModeSensor* m_depthSensor = nullptr;
         IResearchModeCameraSensor* m_pDepthCameraSensor = nullptr;
-        ResearchModeSensorResolution m_resolution;
+        IResearchModeSensor* m_LFSensor = nullptr;
+        IResearchModeCameraSensor* m_LFCameraSensor = nullptr;
+        IResearchModeSensor* m_RFSensor = nullptr;
+        IResearchModeCameraSensor* m_RFCameraSensor = nullptr;
+        ResearchModeSensorResolution m_depthResolution;
+        ResearchModeSensorResolution m_LFResolution;
+        ResearchModeSensorResolution m_RFResolution;
         IResearchModeSensorDevice* m_pSensorDevice = nullptr;
         std::vector<ResearchModeSensorDescriptor> m_sensorDescriptors;
         IResearchModeSensorDeviceConsent* m_pSensorDeviceConsent = nullptr;
         Windows::Perception::Spatial::SpatialLocator m_locator = 0;
         Windows::Perception::Spatial::SpatialCoordinateSystem m_refFrame = nullptr;
-        std::atomic_int m_bufferSize = 0;
+        std::atomic_int m_depthBufferSize = 0; 
+        std::atomic_int m_LFbufferSize = 0;
+        std::atomic_int m_RFbufferSize = 0;
         std::atomic_uint16_t m_centerDepth = 0;
         float m_centerPoint[3]{ 0,0,0 };
         float m_depthSensorPosition[3]{ 0,0,0 };
         std::atomic_bool m_depthSensorLoopStarted = false;
+        std::atomic_bool m_spatialCamerasFrontLoopStarted = false;
         std::atomic_bool m_depthMapTextureUpdated = false;
         std::atomic_bool m_pointCloudUpdated = false;
         std::atomic_bool m_useRoiFilter = false;
+		std::atomic_bool m_LFImageUpdated = false;
+		std::atomic_bool m_RFImageUpdated = false;
+
         float m_roiBound[3]{ 0,0,0 };
         float m_roiCenter[3]{ 0,0,0 };
         static void DepthSensorLoop(HL2ResearchMode* pHL2ResearchMode);
+        static void SpatialCamerasFrontLoop(HL2ResearchMode* pHL2ResearchMode);
         static void CamAccessOnComplete(ResearchModeSensorConsent consent);
         std::string MatrixToString(DirectX::XMFLOAT4X4 mat);
         DirectX::XMFLOAT4X4 m_depthCameraPose;
         DirectX::XMMATRIX m_depthCameraPoseInvMatrix;
+        DirectX::XMFLOAT4X4 m_LFCameraPose;
+        DirectX::XMMATRIX m_LFCameraPoseInvMatrix;
+        DirectX::XMFLOAT4X4 m_RFCameraPose;
+        DirectX::XMMATRIX m_RFCameraPoseInvMatrix;
         std::thread* m_pDepthUpdateThread;
+        std::thread* m_pSpatialCamerasFrontUpdateThread;
         static long long checkAndConvertUnsigned(UINT64 val);
         struct DepthCamRoi {
             float kRowLower = 0.2;

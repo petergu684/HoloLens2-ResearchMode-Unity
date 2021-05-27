@@ -3,20 +3,38 @@ namespace HL2UnityPlugin
     runtimeclass HL2ResearchMode
     {
         HL2ResearchMode();
+
         UInt16 GetCenterDepth();
         UInt16[] GetDepthMapBuffer();
         UInt8[] GetDepthMapTextureBuffer();
         Single[] GetPointCloudBuffer();
+
+		UInt8[] GetLFCameraBuffer();
+		UInt8[] GetRFCameraBuffer();
+
         Single[] GetCenterPoint();
-        Single[] GetDepthSendorPosition();
-        Int32 GetBufferSize();
-        String PrintResolution();
+        Single[] GetDepthSensorPosition();
+        Int32 GetDepthBufferSize();
+        String PrintDepthResolution();
         String PrintDepthExtrinsics();
+		String PrintLFResolution();
+		String PrintLFExtrinsics();
+		String PrintRFResolution();
+		String PrintRFExtrinsics();
+
         Boolean DepthMapTextureUpdated();
         Boolean PointCloudUpdated();
+		Boolean LFImageUpdated();
+		Boolean RFImageUpdated();
+
         void InitializeDepthSensor();
+        void InitializeSpatialCamerasFront();
+
         void StartDepthSensorLoop();
+		void StartSpatialCamerasFrontLoop();
+
         void StopAllSensorDevice();
+
         void SetReferenceCoordinateSystem(Windows.Perception.Spatial.SpatialCoordinateSystem refCoord);
         void SetPointCloudRoiInSpace(Single centerX, Single centerY, Single centerZ, Single boundX, Single boundY, Single boundZ);
         void SetPointCloudDepthOffset(UInt16 offset);

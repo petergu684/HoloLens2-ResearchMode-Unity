@@ -14,10 +14,21 @@ public class ResearchModeVideoStream : MonoBehaviour
     HL2ResearchMode researchMode;
 #endif
 
-    public GameObject previewPlane = null;
-    private Material mediaMaterial = null;
-    private Texture2D mediaTexture = null;
-    private byte[] frameData = null;
+    public GameObject depthPreviewPlane = null;
+    private Material depthMediaMaterial = null;
+    private Texture2D depthMediaTexture = null;
+    private byte[] depthFrameData = null;
+
+    public GameObject LFPreviewPlane = null;
+    private Material LFMediaMaterial = null;
+    private Texture2D LFMediaTexture = null;
+    private byte[] LFFrameData = null;
+
+    public GameObject RFPreviewPlane = null;
+    private Material RFMediaMaterial = null;
+    private Texture2D RFMediaTexture = null;
+    private byte[] RFFrameData = null;
+
 
     public GameObject pointCloudRendererGo;
     public Color pointColor = Color.white;
@@ -25,23 +36,34 @@ public class ResearchModeVideoStream : MonoBehaviour
 
     void Start()
     {
-        mediaMaterial = previewPlane.GetComponent<MeshRenderer>().material;
-        mediaTexture = new Texture2D(512, 512, TextureFormat.Alpha8, false);
-        mediaMaterial.mainTexture = mediaTexture;
+        depthMediaMaterial = depthPreviewPlane.GetComponent<MeshRenderer>().material;
+        depthMediaTexture = new Texture2D(512, 512, TextureFormat.Alpha8, false);
+        depthMediaMaterial.mainTexture = depthMediaTexture;
+
+        LFMediaMaterial = LFPreviewPlane.GetComponent<MeshRenderer>().material;
+        LFMediaTexture = new Texture2D(640, 480, TextureFormat.Alpha8, false);
+        LFMediaMaterial.mainTexture = LFMediaTexture;
+
+        RFMediaMaterial = RFPreviewPlane.GetComponent<MeshRenderer>().material;
+        RFMediaTexture = new Texture2D(640, 480, TextureFormat.Alpha8, false);
+        RFMediaMaterial.mainTexture = RFMediaTexture;
+
         pointCloudRenderer = pointCloudRendererGo.GetComponent<PointCloudRenderer>();
 
 #if ENABLE_WINMD_SUPPORT
         IntPtr WorldOriginPtr = UnityEngine.XR.WSA.WorldManager.GetNativeISpatialCoordinateSystemPtr();
         var unityWorldOrigin = Marshal.GetObjectForIUnknown(WorldOriginPtr) as Windows.Perception.Spatial.SpatialCoordinateSystem;
-        
+
         researchMode = new HL2ResearchMode();
         researchMode.InitializeDepthSensor();
+        researchMode.InitializeSpatialCamerasFront();
+
         researchMode.SetReferenceCoordinateSystem(unityWorldOrigin);
         researchMode.SetPointCloudDepthOffset(0);
         Debug.Log("Successfuly initialize sensors");
         researchMode.StartDepthSensorLoop();
+        researchMode.StartSpatialCamerasFrontLoop();
 #endif
-
     }
 
     bool startRealtimePreview = true;
@@ -54,17 +76,55 @@ public class ResearchModeVideoStream : MonoBehaviour
             byte[] frameTexture = researchMode.GetDepthMapTextureBuffer();
             if (frameTexture.Length > 0)
             {
-                if (frameData == null)
+                if (depthFrameData == null)
                 {
-                    frameData = frameTexture;
+                    depthFrameData = frameTexture;
                 }
                 else
                 {
-                    System.Buffer.BlockCopy(frameTexture, 0, frameData, 0, frameData.Length);
+                    System.Buffer.BlockCopy(frameTexture, 0, depthFrameData, 0, depthFrameData.Length);
                 }
 
-                mediaTexture.LoadRawTextureData(frameData);
-                mediaTexture.Apply();
+                depthMediaTexture.LoadRawTextureData(depthFrameData);
+                depthMediaTexture.Apply();
+            }
+        }
+        // update LF camera texture
+        if (startRealtimePreview && researchMode.LFImageUpdated())
+        {
+            byte[] frameTexture = researchMode.GetLFCameraBuffer();
+            if (frameTexture.Length > 0)
+            {
+                if (LFFrameData == null)
+                {
+                    LFFrameData = frameTexture;
+                }
+                else
+                {
+                    System.Buffer.BlockCopy(frameTexture, 0, LFFrameData, 0, LFFrameData.Length);
+                }
+
+                LFMediaTexture.LoadRawTextureData(LFFrameData);
+                LFMediaTexture.Apply();
+            }
+        }
+        // update RF camera texture
+        if (startRealtimePreview && researchMode.RFImageUpdated())
+        {
+            byte[] frameTexture = researchMode.GetRFCameraBuffer();
+            if (frameTexture.Length > 0)
+            {
+                if (RFFrameData == null)
+                {
+                    RFFrameData = frameTexture;
+                }
+                else
+                {
+                    System.Buffer.BlockCopy(frameTexture, 0, RFFrameData, 0, RFFrameData.Length);
+                }
+
+                RFMediaTexture.LoadRawTextureData(RFFrameData);
+                RFMediaTexture.Apply();
             }
         }
 
@@ -82,7 +142,7 @@ public class ResearchModeVideoStream : MonoBehaviour
                 }
                 //Debug.LogError("Point Cloud Size: " + pointCloudVector3.Length.ToString());
                 pointCloudRenderer.Render(pointCloudVector3, pointColor);
-                
+
             }
         }
 #endif
@@ -111,12 +171,12 @@ public class ResearchModeVideoStream : MonoBehaviour
     {
 #if ENABLE_WINMD_SUPPORT
         researchMode.StopAllSensorDevice();
-        startRealtimePreview = false;
 #endif
+        startRealtimePreview = false;
     }
 
-    private void OnApplicationQuit()
+    private void OnApplicationFocus(bool focus)
     {
-        StopSensorsEvent();
+        if (!focus) StopSensorsEvent();
     }
 }
