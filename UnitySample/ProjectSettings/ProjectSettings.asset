@@ -46,7 +46,7 @@ PlayerSettings:
   defaultScreenHeight: 768
   defaultScreenWidthWeb: 960
   defaultScreenHeightWeb: 600
-  m_StereoRenderingPath: 0
+  m_StereoRenderingPath: 2
   m_ActiveColorSpace: 0
   m_MTRendering: 1
   m_StackTraceTypes: 010000000100000001000000010000000100000001000000
@@ -602,7 +602,7 @@ PlayerSettings:
   metroCertificateNotAfter: 0063d3fcd067d801
   metroApplicationDescription: Template_3D
   wsaImages: {}
-  metroTileShortName: 
+  metroTileShortName: HL2ResearchModeUnitySample
   metroTileShowName: 0
   metroMediumTileShowName: 0
   metroLargeTileShowName: 0
