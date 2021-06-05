@@ -599,7 +599,7 @@ PlayerSettings:
   metroCertificatePassword: 
   metroCertificateSubject: Wenhao
   metroCertificateIssuer: Wenhao
-  metroCertificateNotAfter: 0063d3fcd067d801
+  metroCertificateNotAfter: 800884053b79d801
   metroApplicationDescription: Template_3D
   wsaImages: {}
   metroTileShortName: HL2ResearchModeUnitySample

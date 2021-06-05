@@ -9,12 +9,16 @@ namespace HL2UnityPlugin
         UInt8[] GetDepthMapTextureBuffer();
         Single[] GetPointCloudBuffer();
 
+        UInt16[] GetLongDepthMapBuffer();
+        UInt8[] GetLongDepthMapTextureBuffer();
+
 		UInt8[] GetLFCameraBuffer();
 		UInt8[] GetRFCameraBuffer();
 
         Single[] GetCenterPoint();
         Single[] GetDepthSensorPosition();
         Int32 GetDepthBufferSize();
+        Int32 GetLongDepthBufferSize();
         String PrintDepthResolution();
         String PrintDepthExtrinsics();
 		String PrintLFResolution();
@@ -24,13 +28,16 @@ namespace HL2UnityPlugin
 
         Boolean DepthMapTextureUpdated();
         Boolean PointCloudUpdated();
+        Boolean LongDepthMapTextureUpdated();
 		Boolean LFImageUpdated();
 		Boolean RFImageUpdated();
 
         void InitializeDepthSensor();
+        void InitializeLongDepthSensor();
         void InitializeSpatialCamerasFront();
 
         void StartDepthSensorLoop();
+        void StartLongDepthSensorLoop();
 		void StartSpatialCamerasFrontLoop();
 
         void StopAllSensorDevice();
