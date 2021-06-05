@@ -19,6 +19,11 @@ public class ResearchModeVideoStream : MonoBehaviour
     private Texture2D depthMediaTexture = null;
     private byte[] depthFrameData = null;
 
+    public GameObject longDepthPreviewPlane = null;
+    private Material longDepthMediaMaterial = null;
+    private Texture2D longDepthMediaTexture = null;
+    private byte[] longDepthFrameData = null;
+
     public GameObject LFPreviewPlane = null;
     private Material LFMediaMaterial = null;
     private Texture2D LFMediaTexture = null;
@@ -40,6 +45,10 @@ public class ResearchModeVideoStream : MonoBehaviour
         depthMediaTexture = new Texture2D(512, 512, TextureFormat.Alpha8, false);
         depthMediaMaterial.mainTexture = depthMediaTexture;
 
+        longDepthMediaMaterial = longDepthPreviewPlane.GetComponent<MeshRenderer>().material;
+        longDepthMediaTexture = new Texture2D(320, 288, TextureFormat.Alpha8, false);
+        longDepthMediaMaterial.mainTexture = longDepthMediaTexture;
+
         LFMediaMaterial = LFPreviewPlane.GetComponent<MeshRenderer>().material;
         LFMediaTexture = new Texture2D(640, 480, TextureFormat.Alpha8, false);
         LFMediaMaterial.mainTexture = LFMediaTexture;
@@ -56,12 +65,14 @@ public class ResearchModeVideoStream : MonoBehaviour
 
         researchMode = new HL2ResearchMode();
         researchMode.InitializeDepthSensor();
+        researchMode.InitializeLongDepthSensor();
         researchMode.InitializeSpatialCamerasFront();
 
         researchMode.SetReferenceCoordinateSystem(unityWorldOrigin);
         researchMode.SetPointCloudDepthOffset(0);
         Debug.Log("Successfuly initialize sensors");
         researchMode.StartDepthSensorLoop();
+        researchMode.StartLongDepthSensorLoop();
         researchMode.StartSpatialCamerasFrontLoop();
 #endif
     }
@@ -87,6 +98,25 @@ public class ResearchModeVideoStream : MonoBehaviour
 
                 depthMediaTexture.LoadRawTextureData(depthFrameData);
                 depthMediaTexture.Apply();
+            }
+        }
+        // update long depth map texture
+        if (researchMode.LongDepthMapTextureUpdated())
+        {
+            byte[] frameTexture = researchMode.GetLongDepthMapTextureBuffer();
+            if (frameTexture.Length > 0)
+            {
+                if (longDepthFrameData == null)
+                {
+                    longDepthFrameData = frameTexture;
+                }
+                else
+                {
+                    System.Buffer.BlockCopy(frameTexture, 0, longDepthFrameData, 0, longDepthFrameData.Length);
+                }
+
+                longDepthMediaTexture.LoadRawTextureData(longDepthFrameData);
+                longDepthMediaTexture.Apply();
             }
         }
         // update LF camera texture
