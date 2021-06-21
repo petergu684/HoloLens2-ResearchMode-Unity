@@ -135,7 +135,7 @@ namespace winrt::HL2UnityPlugin::implementation
         }
 
         pHL2ResearchMode->m_depthSensor->OpenStream();
-        
+
         try 
         {
             while (pHL2ResearchMode->m_depthSensorLoopStarted)
@@ -155,8 +155,12 @@ namespace winrt::HL2UnityPlugin::implementation
                 const UINT16* pDepth = nullptr;
                 pDepthFrame->GetBuffer(&pDepth, &outBufferCount);
                 pHL2ResearchMode->m_depthBufferSize = outBufferCount;
+                size_t outAbBufferCount = 0;
+                const UINT16* pAbImage = nullptr;
+                pDepthFrame->GetAbDepthBuffer(&pAbImage, &outAbBufferCount);
 
                 auto pDepthTexture = std::make_unique<uint8_t[]>(outBufferCount);
+                auto pAbTexture = std::make_unique<uint8_t[]>(outAbBufferCount);
                 std::vector<float> pointCloud;
 
                 // get tracking transform
@@ -190,7 +194,7 @@ namespace winrt::HL2UnityPlugin::implementation
                 XMVECTOR roiCenter = XMLoadFloat3(&roiCenterFloat);
                 XMVECTOR roiBound = XMLoadFloat3(&roiBoundFloat);
                 
-
+                UINT16 maxAbValue = 0;
                 for (UINT i = 0; i < resolution.Height; i++)
                 {
                     for (UINT j = 0; j < resolution.Width; j++)
@@ -222,9 +226,26 @@ namespace winrt::HL2UnityPlugin::implementation
                             }
                         }
 
-                        // save as grayscale texture pixel into temp buffer
+                        // save depth map as grayscale texture pixel into temp buffer
                         if (depth == 0) { pDepthTexture.get()[idx] = 0; }
                         else { pDepthTexture.get()[idx] = (uint8_t)((float)depth / 1000 * 255); }
+
+                        // save AbImage as grayscale texture pixel into temp buffer
+                        UINT16 abValue = pAbImage[idx];
+                        uint8_t processedAbValue = 0;
+                        if (abValue > 1000) { processedAbValue = 0xFF; }
+                        else { processedAbValue = (uint8_t)((float)abValue / 1000 * 255); }
+
+                        /*if (abValue > maxAbValue) 
+                        {
+                            maxAbValue = abValue;
+                            std::stringstream ss;
+                            ss << "Non zero valule. Idx: " << idx << " Raw Value: " << abValue << "Processed: " << (int)processedAbValue << "\n";
+                            std::string msg = ss.str();
+                            std::wstring widemsg = std::wstring(msg.begin(), msg.end());
+                            OutputDebugString(widemsg.c_str());
+                        }*/
+                        pAbTexture.get()[idx] = processedAbValue;
 
                         // save the depth of center pixel
                         if (i == (UINT)(0.35 * resolution.Height) && j == (UINT)(0.5 * resolution.Width)
@@ -271,8 +292,24 @@ namespace winrt::HL2UnityPlugin::implementation
                         pHL2ResearchMode->m_depthMapTexture = new UINT8[outBufferCount];
                     }
                     memcpy(pHL2ResearchMode->m_depthMapTexture, pDepthTexture.get(), outBufferCount * sizeof(UINT8));
-                }
 
+                    // save raw AbImage
+                    if (!pHL2ResearchMode->m_shortAbImage)
+                    {
+                        OutputDebugString(L"Create Space for short AbImage...\n");
+                        pHL2ResearchMode->m_shortAbImage = new UINT16[outBufferCount];
+                    }
+                    memcpy(pHL2ResearchMode->m_shortAbImage, pAbImage, outBufferCount * sizeof(UINT16));
+
+                    // save pre-processed AbImage texture (for visualization)
+                    if (!pHL2ResearchMode->m_shortAbImageTexture)
+                    {
+                        OutputDebugString(L"Create Space for short AbImage texture...\n");
+                        pHL2ResearchMode->m_shortAbImageTexture = new UINT8[outBufferCount];
+                    }
+                    memcpy(pHL2ResearchMode->m_shortAbImageTexture, pAbTexture.get(), outBufferCount * sizeof(UINT8));
+                }
+                pHL2ResearchMode->m_shortAbImageTextureUpdated = true;
                 pHL2ResearchMode->m_depthMapTextureUpdated = true;
                 pHL2ResearchMode->m_pointCloudUpdated = true;
 
@@ -544,6 +581,8 @@ namespace winrt::HL2UnityPlugin::implementation
 
     inline bool HL2ResearchMode::DepthMapTextureUpdated() { return m_depthMapTextureUpdated; }
 
+    inline bool HL2ResearchMode::ShortAbImageTextureUpdated() { return m_shortAbImageTextureUpdated; }
+
     inline bool HL2ResearchMode::PointCloudUpdated() { return m_pointCloudUpdated; }
 
     inline int HL2ResearchMode::GetLongDepthBufferSize() { return m_longDepthBufferSize; }
@@ -669,6 +708,18 @@ namespace winrt::HL2UnityPlugin::implementation
         return tempBuffer;
     }
 
+    com_array<uint16_t> HL2ResearchMode::GetShortAbImageBuffer()
+    {
+        std::lock_guard<std::mutex> l(mu);
+        if (!m_shortAbImage)
+        {
+            return com_array<uint16_t>();
+        }
+        com_array<UINT16> tempBuffer = com_array<UINT16>(m_shortAbImage, m_shortAbImage + m_depthBufferSize);
+
+        return tempBuffer;
+    }
+
     // Get depth map texture buffer. (For visualization purpose)
     com_array<uint8_t> HL2ResearchMode::GetDepthMapTextureBuffer()
     {
@@ -680,6 +731,20 @@ namespace winrt::HL2UnityPlugin::implementation
         com_array<UINT8> tempBuffer = com_array<UINT8>(std::move_iterator(m_depthMapTexture), std::move_iterator(m_depthMapTexture + m_depthBufferSize));
 
         m_depthMapTextureUpdated = false;
+        return tempBuffer;
+    }
+
+    // Get depth map texture buffer. (For visualization purpose)
+    com_array<uint8_t> HL2ResearchMode::GetShortAbImageTextureBuffer()
+    {
+        std::lock_guard<std::mutex> l(mu);
+        if (!m_shortAbImageTexture)
+        {
+            return com_array<UINT8>();
+        }
+        com_array<UINT8> tempBuffer = com_array<UINT8>(std::move_iterator(m_shortAbImageTexture), std::move_iterator(m_shortAbImageTexture + m_depthBufferSize));
+
+        m_shortAbImageTextureUpdated = false;
         return tempBuffer;
     }
 

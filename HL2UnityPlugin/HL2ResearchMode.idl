@@ -7,6 +7,8 @@ namespace HL2UnityPlugin
         UInt16 GetCenterDepth();
         UInt16[] GetDepthMapBuffer();
         UInt8[] GetDepthMapTextureBuffer();
+        UInt16[] GetShortAbImageBuffer();
+        UInt8[] GetShortAbImageTextureBuffer();
         Single[] GetPointCloudBuffer();
 
         UInt16[] GetLongDepthMapBuffer();
@@ -27,6 +29,7 @@ namespace HL2UnityPlugin
 		String PrintRFExtrinsics();
 
         Boolean DepthMapTextureUpdated();
+        Boolean ShortAbImageTextureUpdated();
         Boolean PointCloudUpdated();
         Boolean LongDepthMapTextureUpdated();
 		Boolean LFImageUpdated();

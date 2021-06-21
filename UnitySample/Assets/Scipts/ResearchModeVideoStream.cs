@@ -14,10 +14,17 @@ public class ResearchModeVideoStream : MonoBehaviour
     HL2ResearchMode researchMode;
 #endif
 
+    TCPClient tcpClient;
+
     public GameObject depthPreviewPlane = null;
     private Material depthMediaMaterial = null;
     private Texture2D depthMediaTexture = null;
     private byte[] depthFrameData = null;
+
+    public GameObject shortAbImagePreviewPlane = null;
+    private Material shortAbImageMediaMaterial = null;
+    private Texture2D shortAbImageMediaTexture = null;
+    private byte[] shortAbImageFrameData = null;
 
     public GameObject longDepthPreviewPlane = null;
     private Material longDepthMediaMaterial = null;
@@ -45,6 +52,10 @@ public class ResearchModeVideoStream : MonoBehaviour
         depthMediaTexture = new Texture2D(512, 512, TextureFormat.Alpha8, false);
         depthMediaMaterial.mainTexture = depthMediaTexture;
 
+        shortAbImageMediaMaterial = shortAbImagePreviewPlane.GetComponent<MeshRenderer>().material;
+        shortAbImageMediaTexture = new Texture2D(512, 512, TextureFormat.Alpha8, false);
+        shortAbImageMediaMaterial.mainTexture = shortAbImageMediaTexture;
+
         longDepthMediaMaterial = longDepthPreviewPlane.GetComponent<MeshRenderer>().material;
         longDepthMediaTexture = new Texture2D(320, 288, TextureFormat.Alpha8, false);
         longDepthMediaMaterial.mainTexture = longDepthMediaTexture;
@@ -59,20 +70,20 @@ public class ResearchModeVideoStream : MonoBehaviour
 
         pointCloudRenderer = pointCloudRendererGo.GetComponent<PointCloudRenderer>();
 
-#if ENABLE_WINMD_SUPPORT
-        IntPtr WorldOriginPtr = UnityEngine.XR.WSA.WorldManager.GetNativeISpatialCoordinateSystemPtr();
-        var unityWorldOrigin = Marshal.GetObjectForIUnknown(WorldOriginPtr) as Windows.Perception.Spatial.SpatialCoordinateSystem;
+        tcpClient = GetComponent<TCPClient>();
 
+#if ENABLE_WINMD_SUPPORT
         researchMode = new HL2ResearchMode();
         researchMode.InitializeDepthSensor();
         researchMode.InitializeLongDepthSensor();
         researchMode.InitializeSpatialCamerasFront();
 
-        researchMode.SetReferenceCoordinateSystem(unityWorldOrigin);
         researchMode.SetPointCloudDepthOffset(0);
-        Debug.Log("Successfuly initialize sensors");
+
+        // Depth sensor should be initialized in only one mode
         researchMode.StartDepthSensorLoop();
-        researchMode.StartLongDepthSensorLoop();
+        //researchMode.StartLongDepthSensorLoop(); 
+        
         researchMode.StartSpatialCamerasFrontLoop();
 #endif
     }
@@ -100,25 +111,45 @@ public class ResearchModeVideoStream : MonoBehaviour
                 depthMediaTexture.Apply();
             }
         }
-        // update long depth map texture
-        if (researchMode.LongDepthMapTextureUpdated())
+        // update short-throw AbImage texture
+        if (startRealtimePreview && researchMode.ShortAbImageTextureUpdated())
         {
-            byte[] frameTexture = researchMode.GetLongDepthMapTextureBuffer();
+            byte[] frameTexture = researchMode.GetShortAbImageTextureBuffer();
             if (frameTexture.Length > 0)
             {
-                if (longDepthFrameData == null)
+                if (shortAbImageFrameData == null)
                 {
-                    longDepthFrameData = frameTexture;
+                    shortAbImageFrameData = frameTexture;
                 }
                 else
                 {
-                    System.Buffer.BlockCopy(frameTexture, 0, longDepthFrameData, 0, longDepthFrameData.Length);
+                    System.Buffer.BlockCopy(frameTexture, 0, shortAbImageFrameData, 0, shortAbImageFrameData.Length);
                 }
 
-                longDepthMediaTexture.LoadRawTextureData(longDepthFrameData);
-                longDepthMediaTexture.Apply();
+                shortAbImageMediaTexture.LoadRawTextureData(shortAbImageFrameData);
+                shortAbImageMediaTexture.Apply();
             }
         }
+        // update long depth map texture
+        //if (researchMode.LongDepthMapTextureUpdated())
+        //{
+        //    byte[] frameTexture = researchMode.GetLongDepthMapTextureBuffer();
+        //    if (frameTexture.Length > 0)
+        //    {
+        //        if (longDepthFrameData == null)
+        //        {
+        //            longDepthFrameData = frameTexture;
+        //        }
+        //        else
+        //        {
+        //            System.Buffer.BlockCopy(frameTexture, 0, longDepthFrameData, 0, longDepthFrameData.Length);
+        //        }
+
+        //        longDepthMediaTexture.LoadRawTextureData(longDepthFrameData);
+        //        longDepthMediaTexture.Apply();
+        //    }
+        //}
+
         // update LF camera texture
         if (startRealtimePreview && researchMode.LFImageUpdated())
         {
@@ -178,6 +209,8 @@ public class ResearchModeVideoStream : MonoBehaviour
 #endif
     }
 
+
+    #region Button Event Functions
     public void TogglePreviewEvent()
     {
         startRealtimePreview = !startRealtimePreview;
@@ -205,6 +238,17 @@ public class ResearchModeVideoStream : MonoBehaviour
         startRealtimePreview = false;
     }
 
+    public void SaveAHATSensorDataEvent()
+    {
+#if ENABLE_WINMD_SUPPORT
+        var depthMap = researchMode.GetDepthMapBuffer();
+        var AbImage = researchMode.GetShortAbImageBuffer();
+#if WINDOWS_UWP
+        tcpClient.SendUINT16Async(depthMap, AbImage);
+#endif
+#endif
+    }
+    #endregion
     private void OnApplicationFocus(bool focus)
     {
         if (!focus) StopSensorsEvent();

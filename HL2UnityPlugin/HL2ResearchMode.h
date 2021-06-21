@@ -42,6 +42,7 @@ namespace winrt::HL2UnityPlugin::implementation
         void StopAllSensorDevice();
 
         bool DepthMapTextureUpdated();
+        bool ShortAbImageTextureUpdated();
         bool PointCloudUpdated();
         bool LongDepthMapTextureUpdated();
 		bool LFImageUpdated();
@@ -52,6 +53,8 @@ namespace winrt::HL2UnityPlugin::implementation
         void SetPointCloudDepthOffset(uint16_t offset);
         com_array<uint16_t> GetDepthMapBuffer();
         com_array<uint8_t> GetDepthMapTextureBuffer();
+        com_array<uint16_t> GetShortAbImageBuffer();
+        com_array<uint8_t> GetShortAbImageTextureBuffer();
         com_array<uint16_t> GetLongDepthMapBuffer();
         com_array<uint8_t> GetLongDepthMapTextureBuffer();
 		com_array<uint8_t> GetLFCameraBuffer();
@@ -66,6 +69,8 @@ namespace winrt::HL2UnityPlugin::implementation
         int m_pointcloudLength = 0;
         UINT16* m_depthMap = nullptr;
         UINT8* m_depthMapTexture = nullptr;
+        UINT16* m_shortAbImage = nullptr;
+        UINT8* m_shortAbImageTexture = nullptr;
         UINT16* m_longDepthMap = nullptr;
         UINT8* m_longDepthMapTexture = nullptr;
 		UINT8* m_LFImage = nullptr;
@@ -98,6 +103,7 @@ namespace winrt::HL2UnityPlugin::implementation
         std::atomic_bool m_longDepthSensorLoopStarted = false;
         std::atomic_bool m_spatialCamerasFrontLoopStarted = false;
         std::atomic_bool m_depthMapTextureUpdated = false;
+        std::atomic_bool m_shortAbImageTextureUpdated = false;
         std::atomic_bool m_longDepthMapTextureUpdated = false;
         std::atomic_bool m_pointCloudUpdated = false;
         std::atomic_bool m_useRoiFilter = false;
