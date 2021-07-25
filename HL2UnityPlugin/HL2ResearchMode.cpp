@@ -9,6 +9,8 @@ HMODULE LoadLibraryA(
 
 static ResearchModeSensorConsent camAccessCheck;
 static HANDLE camConsentGiven;
+static ResearchModeSensorConsent imuAccessCheck;
+static HANDLE imuConsentGiven;
 
 using namespace DirectX;
 using namespace winrt::Windows::Perception;
@@ -23,6 +25,7 @@ namespace winrt::HL2UnityPlugin::implementation
     {
         // Load Research Mode library
         camConsentGiven = CreateEvent(nullptr, true, false, nullptr);
+        imuConsentGiven = CreateEvent(nullptr, true, false, nullptr);
         HMODULE hrResearchMode = LoadLibraryA("ResearchModeAPI");
         HRESULT hr = S_OK;
 
@@ -52,6 +55,7 @@ namespace winrt::HL2UnityPlugin::implementation
 
         winrt::check_hresult(m_pSensorDevice->QueryInterface(IID_PPV_ARGS(&m_pSensorDeviceConsent)));
         winrt::check_hresult(m_pSensorDeviceConsent->RequestCamAccessAsync(HL2ResearchMode::CamAccessOnComplete));
+        winrt::check_hresult(m_pSensorDeviceConsent->RequestIMUAccessAsync(HL2ResearchMode::ImuAccessOnComplete));
 
         m_pSensorDevice->DisableEyeSelection();
 
@@ -108,6 +112,39 @@ namespace winrt::HL2UnityPlugin::implementation
                 winrt::check_hresult(m_RFSensor->QueryInterface(IID_PPV_ARGS(&m_RFCameraSensor)));
                 winrt::check_hresult(m_RFCameraSensor->GetCameraExtrinsicsMatrix(&m_RFCameraPose));
                 m_RFCameraPoseInvMatrix = XMMatrixInverse(nullptr, XMLoadFloat4x4(&m_RFCameraPose));
+            }
+        }
+    }
+
+    void HL2ResearchMode::InitializeAccelSensor()
+    {
+        for (auto sensorDescriptor : m_sensorDescriptors)
+        {
+            if (sensorDescriptor.sensorType == IMU_ACCEL)
+            {
+                winrt::check_hresult(m_pSensorDevice->GetSensor(sensorDescriptor.sensorType, &m_accelSensor));
+            }
+        }
+    }
+
+    void HL2ResearchMode::InitializeGyroSensor()
+    {
+        for (auto sensorDescriptor : m_sensorDescriptors)
+        {
+            if (sensorDescriptor.sensorType == IMU_GYRO)
+            {
+                winrt::check_hresult(m_pSensorDevice->GetSensor(sensorDescriptor.sensorType, &m_gyroSensor));
+            }
+        }
+    }
+
+    void HL2ResearchMode::InitializeMagSensor()
+    {
+        for (auto sensorDescriptor : m_sensorDescriptors)
+        {
+            if (sensorDescriptor.sensorType == IMU_MAG)
+            {
+                winrt::check_hresult(m_pSensorDevice->GetSensor(sensorDescriptor.sensorType, &m_magSensor));
             }
         }
     }
@@ -569,10 +606,224 @@ namespace winrt::HL2UnityPlugin::implementation
 		pHL2ResearchMode->m_RFSensor = nullptr;
     }
 
+    void HL2ResearchMode::StartAccelSensorLoop()
+    {
+        m_pAccelUpdateThread = new std::thread(HL2ResearchMode::AccelSensorLoop, this);
+    }
+
+    void HL2ResearchMode::AccelSensorLoop(HL2ResearchMode* pHL2ResearchMode)
+    {
+        // prevent starting loop for multiple times
+        if (!pHL2ResearchMode->m_accelSensorLoopStarted)
+        {
+            pHL2ResearchMode->m_accelSensorLoopStarted = true;
+        }
+        else {
+            return;
+        }
+
+        try
+        {
+            winrt::check_hresult(pHL2ResearchMode->m_accelSensor->OpenStream());
+
+            while (pHL2ResearchMode->m_accelSensorLoopStarted)
+            {
+                IResearchModeSensorFrame* pSensorFrame = nullptr;
+                winrt::check_hresult(pHL2ResearchMode->m_accelSensor->GetNextBuffer(&pSensorFrame));
+                
+                IResearchModeAccelFrame* pModeAccelFrame = nullptr;
+                winrt::check_hresult(pSensorFrame->QueryInterface(IID_PPV_ARGS(&pModeAccelFrame)));
+
+                DirectX::XMFLOAT3 pSample;
+                winrt::check_hresult(pModeAccelFrame->GetCalibratedAccelaration(&pSample));
+
+                auto pAccelSample = std::make_unique<float[]>(3);
+
+                // save data
+                {
+                    std::lock_guard<std::mutex> l(pHL2ResearchMode->mu);
+
+                    // save raw accel sample
+                    if (!pHL2ResearchMode->m_accelSample)
+                    {
+                        OutputDebugString(L"Create Space for accel sample...\n");
+                        pHL2ResearchMode->m_accelSample = new float[3];
+                    }
+                    pHL2ResearchMode->m_accelSample[0] = pSample.x;
+                    pHL2ResearchMode->m_accelSample[1] = pSample.y;
+                    pHL2ResearchMode->m_accelSample[2] = pSample.z;
+                }
+
+                pHL2ResearchMode->m_accelSampleUpdated = true;
+
+                pAccelSample.reset();
+
+                // release space
+                if (pModeAccelFrame) {
+                    pModeAccelFrame->Release();
+                }
+                if (pSensorFrame)
+                {
+                    pSensorFrame->Release();
+                }
+            }
+        }
+        catch (...) {}
+
+        pHL2ResearchMode->m_accelSensor->CloseStream();
+        pHL2ResearchMode->m_accelSensor->Release();
+        pHL2ResearchMode->m_accelSensor = nullptr;
+
+    }
+
+    void HL2ResearchMode::StartGyroSensorLoop()
+    {
+        m_pGyroUpdateThread = new std::thread(HL2ResearchMode::GyroSensorLoop, this);
+    }
+
+    void HL2ResearchMode::GyroSensorLoop(HL2ResearchMode* pHL2ResearchMode)
+    {
+        // prevent starting loop for multiple times
+        if (!pHL2ResearchMode->m_gyroSensorLoopStarted)
+        {
+            pHL2ResearchMode->m_gyroSensorLoopStarted = true;
+        }
+        else {
+            return;
+        }
+
+        try
+        {
+            winrt::check_hresult(pHL2ResearchMode->m_gyroSensor->OpenStream());
+
+            while (pHL2ResearchMode->m_gyroSensorLoopStarted)
+            {
+                IResearchModeSensorFrame* pSensorFrame = nullptr;
+                winrt::check_hresult(pHL2ResearchMode->m_gyroSensor->GetNextBuffer(&pSensorFrame));
+
+                IResearchModeGyroFrame* pModeGyroFrame = nullptr;
+                winrt::check_hresult(pSensorFrame->QueryInterface(IID_PPV_ARGS(&pModeGyroFrame)));
+
+                DirectX::XMFLOAT3 pSample;
+                winrt::check_hresult(pModeGyroFrame->GetCalibratedGyro(&pSample));
+
+                auto pGyroSample = std::make_unique<float[]>(3);
+
+                // save data
+                {
+                    std::lock_guard<std::mutex> l(pHL2ResearchMode->mu);
+
+                    // save raw gyro sample
+                    if (!pHL2ResearchMode->m_gyroSample)
+                    {
+                        OutputDebugString(L"Create Space for gyro sample...\n");
+                        pHL2ResearchMode->m_gyroSample = new float[3];
+                    }
+                    pHL2ResearchMode->m_gyroSample[0] = pSample.x;
+                    pHL2ResearchMode->m_gyroSample[1] = pSample.y;
+                    pHL2ResearchMode->m_gyroSample[2] = pSample.z;
+                }
+
+                pHL2ResearchMode->m_gyroSampleUpdated = true;
+
+                pGyroSample.reset();
+
+                // release space
+                if (pModeGyroFrame) {
+                    pModeGyroFrame->Release();
+                }
+                if (pSensorFrame)
+                {
+                    pSensorFrame->Release();
+                }
+            }
+        }
+        catch (...) {}
+        pHL2ResearchMode->m_gyroSensor->CloseStream();
+        pHL2ResearchMode->m_gyroSensor->Release();
+        pHL2ResearchMode->m_gyroSensor = nullptr;
+
+    }
+
+    void HL2ResearchMode::StartMagSensorLoop()
+    {
+        m_pMagUpdateThread = new std::thread(HL2ResearchMode::MagSensorLoop, this);
+    }
+
+    void HL2ResearchMode::MagSensorLoop(HL2ResearchMode* pHL2ResearchMode)
+    {
+        // prevent starting loop for multiple times
+        if (!pHL2ResearchMode->m_magSensorLoopStarted)
+        {
+            pHL2ResearchMode->m_magSensorLoopStarted = true;
+        }
+        else {
+            return;
+        }
+
+        try
+        {
+            winrt::check_hresult(pHL2ResearchMode->m_magSensor->OpenStream());
+
+            while (pHL2ResearchMode->m_magSensorLoopStarted)
+            {
+                IResearchModeSensorFrame* pSensorFrame = nullptr;
+                winrt::check_hresult(pHL2ResearchMode->m_magSensor->GetNextBuffer(&pSensorFrame));
+
+                IResearchModeMagFrame* pModeMagFrame = nullptr;
+                winrt::check_hresult(pSensorFrame->QueryInterface(IID_PPV_ARGS(&pModeMagFrame)));
+
+                DirectX::XMFLOAT3 pSample;
+                winrt::check_hresult(pModeMagFrame->GetMagnetometer(&pSample));
+
+                auto pMagSample = std::make_unique<float[]>(3);
+
+                // save data
+                {
+                    std::lock_guard<std::mutex> l(pHL2ResearchMode->mu);
+
+                    // save raw gyro sample
+                    if (!pHL2ResearchMode->m_magSample)
+                    {
+                        OutputDebugString(L"Create Space for mag sample...\n");
+                        pHL2ResearchMode->m_magSample = new float[3];
+                    }
+                    pHL2ResearchMode->m_magSample[0] = pSample.x;
+                    pHL2ResearchMode->m_magSample[1] = pSample.y;
+                    pHL2ResearchMode->m_magSample[2] = pSample.z;
+                }
+
+                pHL2ResearchMode->m_magSampleUpdated = true;
+
+                pMagSample.reset();
+
+                // release space
+                if (pModeMagFrame) {
+                    pModeMagFrame->Release();
+                }
+                if (pSensorFrame)
+                {
+                    pSensorFrame->Release();
+                }
+            }
+        }
+        catch (...) {}
+        pHL2ResearchMode->m_magSensor->CloseStream();
+        pHL2ResearchMode->m_magSensor->Release();
+        pHL2ResearchMode->m_magSensor = nullptr;
+
+    }
+
     void HL2ResearchMode::CamAccessOnComplete(ResearchModeSensorConsent consent)
     {
         camAccessCheck = consent;
         SetEvent(camConsentGiven);
+    }
+
+    void HL2ResearchMode::ImuAccessOnComplete(ResearchModeSensorConsent consent)
+    {
+        imuAccessCheck = consent;
+        SetEvent(imuConsentGiven);
     }
 
     inline UINT16 HL2ResearchMode::GetCenterDepth() {return m_centerDepth;}
@@ -592,6 +843,12 @@ namespace winrt::HL2UnityPlugin::implementation
 	inline bool HL2ResearchMode::LFImageUpdated() { return m_LFImageUpdated; }
 
 	inline bool HL2ResearchMode::RFImageUpdated() { return m_RFImageUpdated; }
+
+    inline bool HL2ResearchMode::AccelSampleUpdated() { return m_accelSampleUpdated; }
+
+    inline bool HL2ResearchMode::GyroSampleUpdated() { return m_gyroSampleUpdated; }
+
+    inline bool HL2ResearchMode::MagSampleUpdated() { return m_magSampleUpdated; }
 
     hstring HL2ResearchMode::PrintDepthResolution()
     {
@@ -688,6 +945,25 @@ namespace winrt::HL2UnityPlugin::implementation
         {
             delete[] m_longDepthMapTexture;
             m_longDepthMapTexture = nullptr;
+        }
+
+        m_accelSensorLoopStarted = false;
+        if (m_accelSample)
+        {
+            delete[] m_accelSample;
+            m_accelSample = nullptr;
+        }
+        m_gyroSensorLoopStarted = false;
+        if (m_gyroSample)
+        {
+            delete[] m_gyroSample;
+            m_gyroSample = nullptr;
+        }
+        m_magSensorLoopStarted = false;
+        if (m_magSample)
+        {
+            delete[] m_magSample;
+            m_magSample = nullptr;
         }
 
 		m_pSensorDevice->Release();
@@ -798,6 +1074,43 @@ namespace winrt::HL2UnityPlugin::implementation
 		m_RFImageUpdated = false;
 		return tempBuffer;
 	}
+
+
+    com_array<float> HL2ResearchMode::GetAccelSample()
+    {
+        std::lock_guard<std::mutex> l(mu);
+        if (!m_accelSample)
+        {
+            return com_array<float>(3);
+        }
+        com_array<float> tempBuffer = com_array<float>(std::move_iterator(m_accelSample), std::move_iterator(m_accelSample + 3));
+        m_accelSampleUpdated = false;
+        return tempBuffer;
+    }
+
+    com_array<float> HL2ResearchMode::GetGyroSample()
+    {
+        std::lock_guard<std::mutex> l(mu);
+        if (!m_gyroSample)
+        {
+            return com_array<float>(3);
+        }
+        com_array<float> tempBuffer = com_array<float>(std::move_iterator(m_gyroSample), std::move_iterator(m_gyroSample + 3));
+        m_gyroSampleUpdated = false;
+        return tempBuffer;
+    }
+
+    com_array<float> HL2ResearchMode::GetMagSample()
+    {
+        std::lock_guard<std::mutex> l(mu);
+        if (!m_magSample)
+        {
+            return com_array<float>(3);
+        }
+        com_array<float> tempBuffer = com_array<float>(std::move_iterator(m_magSample), std::move_iterator(m_magSample + 3));
+        m_magSampleUpdated = false;
+        return tempBuffer;
+    }
 
 
     // Get the buffer for point cloud in the form of float array.
