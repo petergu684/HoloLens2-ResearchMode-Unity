@@ -11,7 +11,7 @@
 /[Uu]ser[Ss]ettings/
 !/Packages/*
 !/Assets/Plugins/**
-/App/
+/App*/
 
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data

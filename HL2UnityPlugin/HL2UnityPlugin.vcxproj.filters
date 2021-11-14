@@ -11,12 +11,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
-    <ClCompile Include="Class.cpp" />
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
+    <ClCompile Include="TimeConverter.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
     <ClInclude Include="ResearchModeApi.h" />
+    <ClInclude Include="TimeConverter.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="HL2UnityPlugin.def" />

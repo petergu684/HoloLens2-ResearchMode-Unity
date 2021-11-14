@@ -1,6 +1,7 @@
 #pragma once
 #include "HL2ResearchMode.g.h"
 #include "ResearchModeApi.h"
+#include "TimeConverter.h"
 #include <stdio.h>
 #include <iostream>
 #include <sstream>
@@ -60,17 +61,21 @@ namespace winrt::HL2UnityPlugin::implementation
         void SetReferenceCoordinateSystem(Windows::Perception::Spatial::SpatialCoordinateSystem refCoord);
         void SetPointCloudRoiInSpace(float centerX, float centerY, float centerZ, float boundX, float boundY, float boundZ);
         void SetPointCloudDepthOffset(uint16_t offset);
+
         com_array<uint16_t> GetDepthMapBuffer();
         com_array<uint8_t> GetDepthMapTextureBuffer();
         com_array<uint16_t> GetShortAbImageBuffer();
         com_array<uint8_t> GetShortAbImageTextureBuffer();
         com_array<uint16_t> GetLongDepthMapBuffer();
         com_array<uint8_t> GetLongDepthMapTextureBuffer();
-		com_array<uint8_t> GetLFCameraBuffer();
-		com_array<uint8_t> GetRFCameraBuffer();
+        com_array<uint8_t> GetLFCameraBuffer(int64_t& ts);
+        com_array<uint8_t> GetRFCameraBuffer(int64_t& ts);
+        com_array<uint8_t> GetLRFCameraBuffer(int64_t& ts_left, int64_t& ts_right);
+
         com_array<float> GetAccelSample();
         com_array<float> GetGyroSample();
         com_array<float> GetMagSample();
+
         com_array<float> GetPointCloudBuffer();
         com_array<float> GetCenterPoint();
         com_array<float> GetDepthSensorPosition();
@@ -85,11 +90,13 @@ namespace winrt::HL2UnityPlugin::implementation
         UINT8* m_shortAbImageTexture = nullptr;
         UINT16* m_longDepthMap = nullptr;
         UINT8* m_longDepthMapTexture = nullptr;
+
 		UINT8* m_LFImage = nullptr;
 		UINT8* m_RFImage = nullptr;
         float* m_accelSample = nullptr;
         float* m_gyroSample = nullptr;
         float* m_magSample = nullptr;
+
         IResearchModeSensor* m_depthSensor = nullptr;
         IResearchModeCameraSensor* m_pDepthCameraSensor = nullptr;
         IResearchModeSensor* m_longDepthSensor = nullptr;
@@ -160,6 +167,7 @@ namespace winrt::HL2UnityPlugin::implementation
         std::thread* m_pGyroUpdateThread;
         std::thread* m_pMagUpdateThread;
         static long long checkAndConvertUnsigned(UINT64 val);
+        static DirectX::XMMATRIX HL2ResearchMode::SpatialLocationToDxMatrix(Windows::Perception::Spatial::SpatialLocation location);
         struct DepthCamRoi {
             float kRowLower = 0.2;
             float kRowUpper = 0.5;
@@ -169,6 +177,19 @@ namespace winrt::HL2UnityPlugin::implementation
             UINT16 depthFarClip = 800;
         } depthCamRoi;
         UINT16 m_depthOffset = 0;
+
+        TimeConverter m_converter;
+
+        struct Frame {
+            UINT64 timestamp; // QPC 
+            int64_t timestamp_ft; // FileTime
+            UINT8* image = nullptr;
+        };
+
+        struct SpatialCameraFrame {
+            Frame LFFrame;
+            Frame RFFrame;
+        } m_lastSpatialFrame;
     };
 }
 namespace winrt::HL2UnityPlugin::factory_implementation
