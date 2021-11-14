@@ -14,9 +14,10 @@ namespace HL2UnityPlugin
         UInt16[] GetLongDepthMapBuffer();
         UInt8[] GetLongDepthMapTextureBuffer();
 
-		UInt8[] GetLFCameraBuffer();
-		UInt8[] GetRFCameraBuffer();
-
+        UInt8[] GetLFCameraBuffer(out Int64 ts);
+        UInt8[] GetRFCameraBuffer(out Int64 ts);
+        UInt8[] GetLRFCameraBuffer(out Int64 ts_left, out Int64 ts_right);
+        
         Single[] GetAccelSample();
         Single[] GetGyroSample();
         Single[] GetMagSample();
@@ -37,10 +38,12 @@ namespace HL2UnityPlugin
         Boolean PointCloudUpdated();
         Boolean LongDepthMapTextureUpdated();
 		Boolean LFImageUpdated();
+
 		Boolean RFImageUpdated();
         Boolean AccelSampleUpdated();
         Boolean GyroSampleUpdated();
         Boolean MagSampleUpdated();
+
 
         void InitializeDepthSensor();
         void InitializeLongDepthSensor();

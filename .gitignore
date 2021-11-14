@@ -351,3 +351,7 @@ MigrationBackup/
 
 # python folder
 python/
+data/
+
+# VS Code
+.vscode/
