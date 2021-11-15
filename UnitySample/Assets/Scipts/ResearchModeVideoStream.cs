@@ -46,16 +46,25 @@ public class ResearchModeVideoStream : MonoBehaviour
     public GameObject pointCloudRendererGo;
     public Color pointColor = Color.white;
     private PointCloudRenderer pointCloudRenderer;
-    void Start()
+#if ENABLE_WINMD_SUPPORT
+    Windows.Perception.Spatial.SpatialCoordinateSystem unityWorldOrigin;
+#endif
+
+    private void Awake()
     {
-#if WINDOWS_UWP
-#if UNITY_2020_OR_NEWER
-        var unityWorldOrigin = Windows.Perception.Spatial.SpatialLocator.GetDefault().CreateStationaryFrameOfReferenceAtCurrentLocation().CoordinateSystem;
+#if ENABLE_WINMD_SUPPORT
+#if UNITY_2020_1_OR_NEWER
+        IntPtr WorldOriginPtr = UnityEngine.XR.WindowsMR.WindowsMREnvironment.OriginSpatialCoordinateSystem;
+        unityWorldOrigin = Marshal.GetObjectForIUnknown(WorldOriginPtr) as Windows.Perception.Spatial.SpatialCoordinateSystem;
+        //unityWorldOrigin = Windows.Perception.Spatial.SpatialLocator.GetDefault().CreateStationaryFrameOfReferenceAtCurrentLocation().CoordinateSystem;
 #else
         IntPtr WorldOriginPtr = UnityEngine.XR.WSA.WorldManager.GetNativeISpatialCoordinateSystemPtr();
-        var unityWorldOrigin = Marshal.GetObjectForIUnknown(WorldOriginPtr) as Windows.Perception.Spatial.SpatialCoordinateSystem;
+        unityWorldOrigin = Marshal.GetObjectForIUnknown(WorldOriginPtr) as Windows.Perception.Spatial.SpatialCoordinateSystem;
 #endif
 #endif
+    }
+    void Start()
+    {
         if (depthPreviewPlane != null)
         {
             depthMediaMaterial = depthPreviewPlane.GetComponent<MeshRenderer>().material;
