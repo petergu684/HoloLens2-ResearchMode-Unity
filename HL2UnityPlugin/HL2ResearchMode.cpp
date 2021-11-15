@@ -532,7 +532,7 @@ namespace winrt::HL2UnityPlugin::implementation
                 // get tracking transform
                 ResearchModeSensorTimestamp timestamp_left, timestamp_right;
                 pLFCameraFrame->GetTimeStamp(&timestamp_left);
-                pLFCameraFrame->GetTimeStamp(&timestamp_right);
+                pRFCameraFrame->GetTimeStamp(&timestamp_right);
 
                 auto ts_left = PerceptionTimestampHelper::FromSystemRelativeTargetTime(HundredsOfNanoseconds(checkAndConvertUnsigned(timestamp_left.HostTicks)));
                 auto ts_right = PerceptionTimestampHelper::FromSystemRelativeTargetTime(HundredsOfNanoseconds(checkAndConvertUnsigned(timestamp_right.HostTicks)));
