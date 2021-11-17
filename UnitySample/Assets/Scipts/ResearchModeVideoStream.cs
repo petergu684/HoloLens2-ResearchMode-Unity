@@ -14,6 +14,15 @@ public class ResearchModeVideoStream : MonoBehaviour
     HL2ResearchMode researchMode;
 #endif
 
+    enum DepthSensorMode
+    {
+        ShortThrow,
+        LongThrow,
+        None
+    };
+    [SerializeField] DepthSensorMode depthSensorMode = DepthSensorMode.ShortThrow;
+    [SerializeField] bool enablePointCloud = true;
+
     TCPClient tcpClient;
 
     public GameObject depthPreviewPlane = null;
@@ -30,6 +39,11 @@ public class ResearchModeVideoStream : MonoBehaviour
     private Material longDepthMediaMaterial = null;
     private Texture2D longDepthMediaTexture = null;
     private byte[] longDepthFrameData = null;
+
+    public GameObject longAbImagePreviewPlane = null;
+    private Material longAbImageMediaMaterial = null;
+    private Texture2D longAbImageMediaTexture = null;
+    private byte[] longAbImageFrameData = null;
 
     public GameObject LFPreviewPlane = null;
     private Material LFMediaMaterial = null;
@@ -53,7 +67,7 @@ public class ResearchModeVideoStream : MonoBehaviour
     private void Awake()
     {
 #if ENABLE_WINMD_SUPPORT
-#if UNITY_2020_1_OR_NEWER
+#if UNITY_2020_1_OR_NEWER // note: Unity 2021.2 and later not supported
         IntPtr WorldOriginPtr = UnityEngine.XR.WindowsMR.WindowsMREnvironment.OriginSpatialCoordinateSystem;
         unityWorldOrigin = Marshal.GetObjectForIUnknown(WorldOriginPtr) as Windows.Perception.Spatial.SpatialCoordinateSystem;
         //unityWorldOrigin = Windows.Perception.Spatial.SpatialLocator.GetDefault().CreateStationaryFrameOfReferenceAtCurrentLocation().CoordinateSystem;
@@ -65,26 +79,44 @@ public class ResearchModeVideoStream : MonoBehaviour
     }
     void Start()
     {
-        if (depthPreviewPlane != null)
+        if (depthSensorMode == DepthSensorMode.ShortThrow)
         {
-            depthMediaMaterial = depthPreviewPlane.GetComponent<MeshRenderer>().material;
-            depthMediaTexture = new Texture2D(512, 512, TextureFormat.Alpha8, false);
-            depthMediaMaterial.mainTexture = depthMediaTexture;
-        }
+            if (depthPreviewPlane != null)
+            {
+                depthMediaMaterial = depthPreviewPlane.GetComponent<MeshRenderer>().material;
+                depthMediaTexture = new Texture2D(512, 512, TextureFormat.Alpha8, false);
+                depthMediaMaterial.mainTexture = depthMediaTexture;
+            }
 
-        if (shortAbImagePreviewPlane != null)
-        {
-            shortAbImageMediaMaterial = shortAbImagePreviewPlane.GetComponent<MeshRenderer>().material;
-            shortAbImageMediaTexture = new Texture2D(512, 512, TextureFormat.Alpha8, false);
-            shortAbImageMediaMaterial.mainTexture = shortAbImageMediaTexture;
+            if (shortAbImagePreviewPlane != null)
+            {
+                shortAbImageMediaMaterial = shortAbImagePreviewPlane.GetComponent<MeshRenderer>().material;
+                shortAbImageMediaTexture = new Texture2D(512, 512, TextureFormat.Alpha8, false);
+                shortAbImageMediaMaterial.mainTexture = shortAbImageMediaTexture;
+            }
+            longDepthPreviewPlane.SetActive(false);
+            longAbImagePreviewPlane.SetActive(false);
         }
+        
+        if (depthSensorMode == DepthSensorMode.LongThrow)
+        {
+            if (longDepthPreviewPlane != null)
+            {
+                longDepthMediaMaterial = longDepthPreviewPlane.GetComponent<MeshRenderer>().material;
+                longDepthMediaTexture = new Texture2D(320, 288, TextureFormat.Alpha8, false);
+                longDepthMediaMaterial.mainTexture = longDepthMediaTexture;
+            }
 
-        if (longDepthPreviewPlane != null)
-        {
-            longDepthMediaMaterial = longDepthPreviewPlane.GetComponent<MeshRenderer>().material;
-            longDepthMediaTexture = new Texture2D(320, 288, TextureFormat.Alpha8, false);
-            longDepthMediaMaterial.mainTexture = longDepthMediaTexture;
+            if (longAbImagePreviewPlane != null)
+            {
+                longAbImageMediaMaterial = longAbImagePreviewPlane.GetComponent<MeshRenderer>().material;
+                longAbImageMediaTexture = new Texture2D(320, 288, TextureFormat.Alpha8, false);
+                longAbImageMediaMaterial.mainTexture = longAbImageMediaTexture;
+            }
+            depthPreviewPlane.SetActive(false);
+            shortAbImagePreviewPlane.SetActive(false);
         }
+        
 
         if (LFPreviewPlane != null)
         {
@@ -109,15 +141,18 @@ public class ResearchModeVideoStream : MonoBehaviour
 
 #if ENABLE_WINMD_SUPPORT
         researchMode = new HL2ResearchMode();
-        researchMode.InitializeDepthSensor();
-        //researchMode.InitializeLongDepthSensor();
+
+        // Depth sensor should be initialized in only one mode
+        if (depthSensorMode == DepthSensorMode.LongThrow) researchMode.InitializeLongDepthSensor();
+        else if (depthSensorMode == DepthSensorMode.ShortThrow) researchMode.InitializeDepthSensor();
+        
         researchMode.InitializeSpatialCamerasFront();
         researchMode.SetReferenceCoordinateSystem(unityWorldOrigin);
         researchMode.SetPointCloudDepthOffset(0);
 
         // Depth sensor should be initialized in only one mode
-        researchMode.StartDepthSensorLoop();
-        //researchMode.StartLongDepthSensorLoop(); 
+        if (depthSensorMode == DepthSensorMode.LongThrow) researchMode.StartLongDepthSensorLoop(enablePointCloud);
+        else if (depthSensorMode == DepthSensorMode.ShortThrow) researchMode.StartDepthSensorLoop(enablePointCloud);
 
         researchMode.StartSpatialCamerasFrontLoop();
 #endif
@@ -128,7 +163,8 @@ public class ResearchModeVideoStream : MonoBehaviour
     {
 #if ENABLE_WINMD_SUPPORT
         // update depth map texture
-        if (startRealtimePreview && depthPreviewPlane != null && researchMode.DepthMapTextureUpdated())
+        if (depthSensorMode == DepthSensorMode.ShortThrow && startRealtimePreview && 
+            depthPreviewPlane != null && researchMode.DepthMapTextureUpdated())
         {
             byte[] frameTexture = researchMode.GetDepthMapTextureBuffer();
             if (frameTexture.Length > 0)
@@ -146,8 +182,10 @@ public class ResearchModeVideoStream : MonoBehaviour
                 depthMediaTexture.Apply();
             }
         }
+
         // update short-throw AbImage texture
-        if (startRealtimePreview && shortAbImagePreviewPlane != null && researchMode.ShortAbImageTextureUpdated())
+        if (depthSensorMode == DepthSensorMode.ShortThrow && startRealtimePreview && 
+            shortAbImagePreviewPlane != null && researchMode.ShortAbImageTextureUpdated())
         {
             byte[] frameTexture = researchMode.GetShortAbImageTextureBuffer();
             if (frameTexture.Length > 0)
@@ -165,25 +203,48 @@ public class ResearchModeVideoStream : MonoBehaviour
                 shortAbImageMediaTexture.Apply();
             }
         }
-        // update long depth map texture
-        //if (startRealtimePreview && longDepthPreviewPlane != null && researchMode.LongDepthMapTextureUpdated())
-        //{
-        //    byte[] frameTexture = researchMode.GetLongDepthMapTextureBuffer();
-        //    if (frameTexture.Length > 0)
-        //    {
-        //        if (longDepthFrameData == null)
-        //        {
-        //            longDepthFrameData = frameTexture;
-        //        }
-        //        else
-        //        {
-        //            System.Buffer.BlockCopy(frameTexture, 0, longDepthFrameData, 0, longDepthFrameData.Length);
-        //        }
 
-        //        longDepthMediaTexture.LoadRawTextureData(longDepthFrameData);
-        //        longDepthMediaTexture.Apply();
-        //    }
-        //}
+        // update long depth map texture
+        if (depthSensorMode == DepthSensorMode.LongThrow && startRealtimePreview && 
+            longDepthPreviewPlane != null && researchMode.LongDepthMapTextureUpdated())
+        {
+            byte[] frameTexture = researchMode.GetLongDepthMapTextureBuffer();
+            if (frameTexture.Length > 0)
+            {
+                if (longDepthFrameData == null)
+                {
+                    longDepthFrameData = frameTexture;
+                }
+                else
+                {
+                    System.Buffer.BlockCopy(frameTexture, 0, longDepthFrameData, 0, longDepthFrameData.Length);
+                }
+
+                longDepthMediaTexture.LoadRawTextureData(longDepthFrameData);
+                longDepthMediaTexture.Apply();
+            }
+        }
+
+        // update long-throw AbImage texture
+        if (depthSensorMode == DepthSensorMode.LongThrow && startRealtimePreview &&
+            longAbImagePreviewPlane != null && researchMode.LongAbImageTextureUpdated())
+        {
+            byte[] frameTexture = researchMode.GetLongAbImageTextureBuffer();
+            if (frameTexture.Length > 0)
+            {
+                if (longAbImageFrameData == null)
+                {
+                    longAbImageFrameData = frameTexture;
+                }
+                else
+                {
+                    System.Buffer.BlockCopy(frameTexture, 0, longAbImageFrameData, 0, longAbImageFrameData.Length);
+                }
+
+                longAbImageMediaTexture.LoadRawTextureData(longAbImageFrameData);
+                longAbImageMediaTexture.Apply();
+            }
+        }
 
         // update LF camera texture
         if (startRealtimePreview && LFPreviewPlane != null && researchMode.LFImageUpdated())
@@ -227,9 +288,22 @@ public class ResearchModeVideoStream : MonoBehaviour
         }
 
         // Update point cloud
-        if (renderPointCloud && pointCloudRendererGo != null)
+        UpdatePointCloud();
+#endif
+    }
+
+#if ENABLE_WINMD_SUPPORT
+    private void UpdatePointCloud()
+    {
+        if (enablePointCloud && renderPointCloud && pointCloudRendererGo != null)
         {
-            float[] pointCloud = researchMode.GetPointCloudBuffer();
+            if ((depthSensorMode == DepthSensorMode.LongThrow && !researchMode.LongThrowPointCloudUpdated()) ||
+                (depthSensorMode == DepthSensorMode.ShortThrow && !researchMode.PointCloudUpdated())) return;
+
+            float[] pointCloud = new float[] { };
+            if (depthSensorMode == DepthSensorMode.LongThrow) pointCloud = researchMode.GetLongThrowPointCloudBuffer();
+            else if (depthSensorMode == DepthSensorMode.ShortThrow) pointCloud = researchMode.GetPointCloudBuffer();
+            
             if (pointCloud.Length > 0)
             {
                 int pointCloudLength = pointCloud.Length / 3;
@@ -238,13 +312,12 @@ public class ResearchModeVideoStream : MonoBehaviour
                 {
                     pointCloudVector3[i] = new Vector3(pointCloud[3 * i], pointCloud[3 * i + 1], pointCloud[3 * i + 2]);
                 }
-                //Debug.LogError("Point Cloud Size: " + pointCloudVector3.Length.ToString());
+                text.text = "Point Cloud Length: " + pointCloudVector3.Length.ToString();
                 pointCloudRenderer.Render(pointCloudVector3, pointColor);
-
             }
         }
-#endif
     }
+#endif
 
 
     #region Button Event Functions

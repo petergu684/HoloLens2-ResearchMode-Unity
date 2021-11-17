@@ -41,8 +41,6 @@ public class ResearchModeImuStream : MonoBehaviour
         researchMode.StartMagSensorLoop();
 #endif
     }
-
-    bool startRealtimePreview = true;
     void LateUpdate()
     {
 #if ENABLE_WINMD_SUPPORT
@@ -126,7 +124,6 @@ public class ResearchModeImuStream : MonoBehaviour
 #if ENABLE_WINMD_SUPPORT
         researchMode.StopAllSensorDevice();
 #endif
-        startRealtimePreview = false;
     }
 
     private void OnApplicationFocus(bool focus)

@@ -9,10 +9,13 @@ namespace HL2UnityPlugin
         UInt8[] GetDepthMapTextureBuffer();
         UInt16[] GetShortAbImageBuffer();
         UInt8[] GetShortAbImageTextureBuffer();
+        UInt16[] GetLongAbImageBuffer();
+        UInt8[] GetLongAbImageTextureBuffer();
         Single[] GetPointCloudBuffer();
 
         UInt16[] GetLongDepthMapBuffer();
         UInt8[] GetLongDepthMapTextureBuffer();
+        Single[] GetLongThrowPointCloudBuffer();
 
         UInt8[] GetLFCameraBuffer(out Int64 ts);
         UInt8[] GetRFCameraBuffer(out Int64 ts);
@@ -23,7 +26,6 @@ namespace HL2UnityPlugin
         Single[] GetMagSample();
 
         Single[] GetCenterPoint();
-        Single[] GetDepthSensorPosition();
         Int32 GetDepthBufferSize();
         Int32 GetLongDepthBufferSize();
         String PrintDepthResolution();
@@ -35,10 +37,12 @@ namespace HL2UnityPlugin
 
         Boolean DepthMapTextureUpdated();
         Boolean ShortAbImageTextureUpdated();
+        Boolean LongAbImageTextureUpdated();
         Boolean PointCloudUpdated();
         Boolean LongDepthMapTextureUpdated();
-		Boolean LFImageUpdated();
+        Boolean LongThrowPointCloudUpdated();
 
+		Boolean LFImageUpdated();
 		Boolean RFImageUpdated();
         Boolean AccelSampleUpdated();
         Boolean GyroSampleUpdated();
@@ -53,7 +57,9 @@ namespace HL2UnityPlugin
         void InitializeMagSensor();
 
         void StartDepthSensorLoop();
+        void StartDepthSensorLoop(Boolean reconstructPointCloud);
         void StartLongDepthSensorLoop();
+        void StartLongDepthSensorLoop(Boolean reconstructPointCloud);
 		void StartSpatialCamerasFrontLoop();
         void StartAccelSensorLoop();
         void StartGyroSensorLoop();

@@ -66,7 +66,6 @@ namespace winrt::HL2UnityPlugin::implementation
 
     void HL2ResearchMode::InitializeDepthSensor() 
     {
-       
         for (auto sensorDescriptor : m_sensorDescriptors)
         {
             if (sensorDescriptor.sensorType == DEPTH_AHAT)
@@ -149,13 +148,14 @@ namespace winrt::HL2UnityPlugin::implementation
         }
     }
 
-    void HL2ResearchMode::StartDepthSensorLoop() 
+    void HL2ResearchMode::StartDepthSensorLoop(bool reconstructPointCloud)
     {
         //std::thread th1([this] {this->DepthSensorLoopTest(); });
-        if (m_refFrame == nullptr) 
+        if (reconstructPointCloud && m_refFrame == nullptr)
         {
             m_refFrame = m_locator.GetDefault().CreateStationaryFrameOfReferenceAtCurrentLocation().CoordinateSystem();
         }
+        m_reconstructShortThrowPointCloud = reconstructPointCloud;
 
         m_pDepthUpdateThread = new std::thread(HL2ResearchMode::DepthSensorLoop, this);
     }
@@ -167,14 +167,13 @@ namespace winrt::HL2UnityPlugin::implementation
         {
             pHL2ResearchMode->m_depthSensorLoopStarted = true;
         }
-        else {
-            return;
-        }
+        else return;
 
         pHL2ResearchMode->m_depthSensor->OpenStream();
 
         try 
         {
+            UINT64 lastTs = 0;
             while (pHL2ResearchMode->m_depthSensorLoopStarted)
             {
                 IResearchModeSensorFrame* pDepthSensorFrame = nullptr;
@@ -200,26 +199,33 @@ namespace winrt::HL2UnityPlugin::implementation
                 auto pAbTexture = std::make_unique<uint8_t[]>(outAbBufferCount);
                 std::vector<float> pointCloud;
 
-                // get tracking transform
                 ResearchModeSensorTimestamp timestamp;
                 pDepthSensorFrame->GetTimeStamp(&timestamp);
 
-                auto ts = PerceptionTimestampHelper::FromSystemRelativeTargetTime(HundredsOfNanoseconds(checkAndConvertUnsigned(timestamp.HostTicks)));
-                auto transToWorld = pHL2ResearchMode->m_locator.TryLocateAtTimestamp(ts, pHL2ResearchMode->m_refFrame);
-                if (transToWorld == nullptr)
+                if (timestamp.HostTicks == lastTs) continue;
+                lastTs = timestamp.HostTicks;
+
+                // get tracking transform
+                Windows::Perception::Spatial::SpatialLocation transToWorld = nullptr;
+                if (pHL2ResearchMode->m_reconstructShortThrowPointCloud) 
                 {
-                    continue;
+                    auto ts = PerceptionTimestampHelper::FromSystemRelativeTargetTime(HundredsOfNanoseconds(checkAndConvertUnsigned(timestamp.HostTicks)));
+                    transToWorld = pHL2ResearchMode->m_locator.TryLocateAtTimestamp(ts, pHL2ResearchMode->m_refFrame);
+                    if (transToWorld == nullptr) continue;
                 }
-                auto depthToWorld = pHL2ResearchMode->m_depthCameraPoseInvMatrix * SpatialLocationToDxMatrix(transToWorld);
+
+                XMMATRIX depthToWorld = XMMatrixIdentity();
+                if (pHL2ResearchMode->m_reconstructShortThrowPointCloud)
+                    depthToWorld = pHL2ResearchMode->m_depthCameraPoseInvMatrix * SpatialLocationToDxMatrix(transToWorld);
 
                 pHL2ResearchMode->mu.lock();
                 auto roiCenterFloat = XMFLOAT3(pHL2ResearchMode->m_roiCenter[0], pHL2ResearchMode->m_roiCenter[1], pHL2ResearchMode->m_roiCenter[2]);
                 auto roiBoundFloat = XMFLOAT3(pHL2ResearchMode->m_roiBound[0], pHL2ResearchMode->m_roiBound[1], pHL2ResearchMode->m_roiBound[2]);
                 pHL2ResearchMode->mu.unlock();
+
                 XMVECTOR roiCenter = XMLoadFloat3(&roiCenterFloat);
                 XMVECTOR roiBound = XMLoadFloat3(&roiBoundFloat);
                 
-                UINT16 maxAbValue = 0;
                 for (UINT i = 0; i < resolution.Height; i++)
                 {
                     for (UINT j = 0; j < resolution.Width; j++)
@@ -228,26 +234,29 @@ namespace winrt::HL2UnityPlugin::implementation
                         UINT16 depth = pDepth[idx];
                         depth = (depth > 4090) ? 0 : depth - pHL2ResearchMode->m_depthOffset;
 
-                        // back-project point cloud within Roi
-                        if (i > pHL2ResearchMode->depthCamRoi.kRowLower*resolution.Height&& i < pHL2ResearchMode->depthCamRoi.kRowUpper * resolution.Height &&
-                            j > pHL2ResearchMode->depthCamRoi.kColLower* resolution.Width&& j < pHL2ResearchMode->depthCamRoi.kColUpper * resolution.Width &&
-                            depth > pHL2ResearchMode->depthCamRoi.depthNearClip && depth < pHL2ResearchMode->depthCamRoi.depthFarClip)
+                        if (pHL2ResearchMode->m_reconstructShortThrowPointCloud)
                         {
-                            float xy[2] = { 0, 0 };
-                            float uv[2] = { j, i };
-                            pHL2ResearchMode->m_pDepthCameraSensor->MapImagePointToCameraUnitPlane(uv, xy);
-                            auto pointOnUnitPlane = XMFLOAT3(xy[0], xy[1], 1);
-                            auto tempPoint = (float)depth / 1000 * XMVector3Normalize(XMLoadFloat3(&pointOnUnitPlane));
-                            // apply transformation
-                            auto pointInWorld = XMVector3Transform(tempPoint, depthToWorld);
-
-                            // filter point cloud based on region of interest
-                            if (!pHL2ResearchMode->m_useRoiFilter ||
-                                (pHL2ResearchMode->m_useRoiFilter && XMVector3InBounds(pointInWorld - roiCenter, roiBound)))
+                            // back-project point cloud within Roi
+                            if (i > pHL2ResearchMode->depthCamRoi.kRowLower * resolution.Height && i < pHL2ResearchMode->depthCamRoi.kRowUpper * resolution.Height &&
+                                j > pHL2ResearchMode->depthCamRoi.kColLower * resolution.Width && j < pHL2ResearchMode->depthCamRoi.kColUpper * resolution.Width &&
+                                depth > pHL2ResearchMode->depthCamRoi.depthNearClip && depth < pHL2ResearchMode->depthCamRoi.depthFarClip)
                             {
-                                pointCloud.push_back(XMVectorGetX(pointInWorld));
-                                pointCloud.push_back(XMVectorGetY(pointInWorld));
-                                pointCloud.push_back(-XMVectorGetZ(pointInWorld));
+                                float xy[2] = { 0, 0 };
+                                float uv[2] = { j, i };
+                                pHL2ResearchMode->m_pDepthCameraSensor->MapImagePointToCameraUnitPlane(uv, xy);
+                                auto pointOnUnitPlane = XMFLOAT3(xy[0], xy[1], 1);
+                                auto tempPoint = (float)depth / 1000 * XMVector3Normalize(XMLoadFloat3(&pointOnUnitPlane));
+                                // apply transformation
+                                auto pointInWorld = XMVector3Transform(tempPoint, depthToWorld);
+
+                                // filter point cloud based on region of interest
+                                if (!pHL2ResearchMode->m_useRoiFilter ||
+                                    (pHL2ResearchMode->m_useRoiFilter && XMVector3InBounds(pointInWorld - roiCenter, roiBound)))
+                                {
+                                    pointCloud.push_back(XMVectorGetX(pointInWorld));
+                                    pointCloud.push_back(XMVectorGetY(pointInWorld));
+                                    pointCloud.push_back(-XMVectorGetZ(pointInWorld));
+                                }
                             }
                         }
 
@@ -261,19 +270,11 @@ namespace winrt::HL2UnityPlugin::implementation
                         if (abValue > 1000) { processedAbValue = 0xFF; }
                         else { processedAbValue = (uint8_t)((float)abValue / 1000 * 255); }
 
-                        /*if (abValue > maxAbValue) 
-                        {
-                            maxAbValue = abValue;
-                            std::stringstream ss;
-                            ss << "Non zero valule. Idx: " << idx << " Raw Value: " << abValue << "Processed: " << (int)processedAbValue << "\n";
-                            std::string msg = ss.str();
-                            std::wstring widemsg = std::wstring(msg.begin(), msg.end());
-                            OutputDebugString(widemsg.c_str());
-                        }*/
                         pAbTexture.get()[idx] = processedAbValue;
 
                         // save the depth of center pixel
-                        if (i == (UINT)(0.35 * resolution.Height) && j == (UINT)(0.5 * resolution.Width)
+                        if (pHL2ResearchMode->m_reconstructShortThrowPointCloud && 
+                            i == (UINT)(0.35 * resolution.Height) && j == (UINT)(0.5 * resolution.Width)
                             && pointCloud.size()>=3)
                         {
                             pHL2ResearchMode->m_centerDepth = depth;
@@ -293,14 +294,18 @@ namespace winrt::HL2UnityPlugin::implementation
                     std::lock_guard<std::mutex> l(pHL2ResearchMode->mu);
 
                     // save point cloud
-                    if (!pHL2ResearchMode->m_pointCloud)
+                    if (pHL2ResearchMode->m_reconstructShortThrowPointCloud)
                     {
-                        OutputDebugString(L"Create Space for point cloud...\n");
-                        pHL2ResearchMode->m_pointCloud = new float[outBufferCount * 3];
-                    }
+                        if (!pHL2ResearchMode->m_pointCloud)
+                        {
+                            OutputDebugString(L"Create Space for point cloud...\n");
+                            pHL2ResearchMode->m_pointCloud = new float[outBufferCount * 3];
+                        }
 
-                    memcpy(pHL2ResearchMode->m_pointCloud, pointCloud.data(), pointCloud.size() * sizeof(float));
-                    pHL2ResearchMode->m_pointcloudLength = pointCloud.size();
+                        memcpy(pHL2ResearchMode->m_pointCloud, pointCloud.data(), pointCloud.size() * sizeof(float));
+                        pHL2ResearchMode->m_pointcloudLength = pointCloud.size();
+                    }
+                    
 
                     // save raw depth map
                     if (!pHL2ResearchMode->m_depthMap)
@@ -336,12 +341,13 @@ namespace winrt::HL2UnityPlugin::implementation
                 }
                 pHL2ResearchMode->m_shortAbImageTextureUpdated = true;
                 pHL2ResearchMode->m_depthMapTextureUpdated = true;
-                pHL2ResearchMode->m_pointCloudUpdated = true;
+                if (pHL2ResearchMode->m_reconstructShortThrowPointCloud) pHL2ResearchMode->m_pointCloudUpdated = true;
 
                 pDepthTexture.reset();
 
                 // release space
-                if (pDepthFrame) {
+                if (pDepthFrame) 
+                {
                     pDepthFrame->Release();
                 }
                 if (pDepthSensorFrame)
@@ -358,12 +364,13 @@ namespace winrt::HL2UnityPlugin::implementation
         
     }
 
-    void HL2ResearchMode::StartLongDepthSensorLoop()
+    void HL2ResearchMode::StartLongDepthSensorLoop(bool reconstructPointCloud)
     {
-        if (m_refFrame == nullptr)
+        if (reconstructPointCloud && m_refFrame == nullptr)
         {
             m_refFrame = m_locator.GetDefault().CreateStationaryFrameOfReferenceAtCurrentLocation().CoordinateSystem();
         }
+        m_reconstructLongThrowPointCloud = reconstructPointCloud;
 
         m_pLongDepthUpdateThread = new std::thread(HL2ResearchMode::LongDepthSensorLoop, this);
     }
@@ -383,6 +390,7 @@ namespace winrt::HL2UnityPlugin::implementation
 
         try
         {
+            UINT64 lastTs = 0; bool printedResolution = false;
             while (pHL2ResearchMode->m_longDepthSensorLoopStarted)
             {
                 IResearchModeSensorFrame* pDepthSensorFrame = nullptr;
@@ -398,24 +406,44 @@ namespace winrt::HL2UnityPlugin::implementation
 
                 size_t outBufferCount = 0;
                 const UINT16* pDepth = nullptr;
-
                 const BYTE* pSigma = nullptr;
                 pDepthFrame->GetSigmaBuffer(&pSigma, &outBufferCount);
                 pDepthFrame->GetBuffer(&pDepth, &outBufferCount);
+
+                const UINT16* pAbImage = nullptr;
+                pDepthFrame->GetAbDepthBuffer(&pAbImage, &outBufferCount);
+
                 pHL2ResearchMode->m_longDepthBufferSize = outBufferCount;
 
                 auto pDepthTexture = std::make_unique<uint8_t[]>(outBufferCount);
+                auto pAbTexture = std::make_unique<uint8_t[]>(outBufferCount);
+                std::vector<float> pointCloud;
 
-                // get tracking transform
                 ResearchModeSensorTimestamp timestamp;
                 pDepthSensorFrame->GetTimeStamp(&timestamp);
 
-                auto ts = PerceptionTimestampHelper::FromSystemRelativeTargetTime(HundredsOfNanoseconds(checkAndConvertUnsigned(timestamp.HostTicks)));
-                auto transToWorld = pHL2ResearchMode->m_locator.TryLocateAtTimestamp(ts, pHL2ResearchMode->m_refFrame);
-                if (transToWorld == nullptr)
+                if (timestamp.HostTicks == lastTs) continue;
+                lastTs = timestamp.HostTicks;
+
+                // get tracking transform
+                Windows::Perception::Spatial::SpatialLocation transToWorld = nullptr;
+                if (pHL2ResearchMode->m_reconstructLongThrowPointCloud)
                 {
-                    continue;
+                    auto ts = PerceptionTimestampHelper::FromSystemRelativeTargetTime(HundredsOfNanoseconds(checkAndConvertUnsigned(timestamp.HostTicks)));
+                    transToWorld = pHL2ResearchMode->m_locator.TryLocateAtTimestamp(ts, pHL2ResearchMode->m_refFrame);
+                    if (transToWorld == nullptr) continue;
                 }
+                XMMATRIX depthToWorld = XMMatrixIdentity();
+                if (pHL2ResearchMode->m_reconstructLongThrowPointCloud)
+                    depthToWorld = pHL2ResearchMode->m_longDepthCameraPoseInvMatrix * SpatialLocationToDxMatrix(transToWorld);
+
+                pHL2ResearchMode->mu.lock();
+                auto roiCenterFloat = XMFLOAT3(pHL2ResearchMode->m_roiCenter[0], pHL2ResearchMode->m_roiCenter[1], pHL2ResearchMode->m_roiCenter[2]);
+                auto roiBoundFloat = XMFLOAT3(pHL2ResearchMode->m_roiBound[0], pHL2ResearchMode->m_roiBound[1], pHL2ResearchMode->m_roiBound[2]);
+                pHL2ResearchMode->mu.unlock();
+
+                XMVECTOR roiCenter = XMLoadFloat3(&roiCenterFloat);
+                XMVECTOR roiBound = XMLoadFloat3(&roiBoundFloat);
 
                 for (UINT i = 0; i < resolution.Height; i++)
                 {
@@ -425,9 +453,58 @@ namespace winrt::HL2UnityPlugin::implementation
                         UINT16 depth = pDepth[idx];
                         depth = (pSigma[idx] & 0x80) ? 0 : depth - pHL2ResearchMode->m_depthOffset;
 
+                        if (pHL2ResearchMode->m_reconstructLongThrowPointCloud)
+                        {
+                            // back-project point cloud within Roi
+                            if (i > pHL2ResearchMode->depthCamRoi.kRowLower * resolution.Height && i < pHL2ResearchMode->depthCamRoi.kRowUpper * resolution.Height &&
+                                j > pHL2ResearchMode->depthCamRoi.kColLower * resolution.Width && j < pHL2ResearchMode->depthCamRoi.kColUpper * resolution.Width &&
+                                depth > 200)
+                            {
+                                float xy[2] = { 0, 0 };
+                                float uv[2] = { j, i };
+                                pHL2ResearchMode->m_pLongDepthCameraSensor->MapImagePointToCameraUnitPlane(uv, xy);
+                                auto pointOnUnitPlane = XMFLOAT3(xy[0], xy[1], 1);
+                                auto tempPoint = (float)depth / 1000 * XMVector3Normalize(XMLoadFloat3(&pointOnUnitPlane));
+                                // apply transformation
+                                auto pointInWorld = XMVector3Transform(tempPoint, depthToWorld);
+
+                                // filter point cloud based on region of interest
+                                if (!pHL2ResearchMode->m_useRoiFilter ||
+                                    (pHL2ResearchMode->m_useRoiFilter && XMVector3InBounds(pointInWorld - roiCenter, roiBound)))
+                                {
+                                    pointCloud.push_back(XMVectorGetX(pointInWorld));
+                                    pointCloud.push_back(XMVectorGetY(pointInWorld));
+                                    pointCloud.push_back(-XMVectorGetZ(pointInWorld));
+                                }
+                            }
+                        }
+
                         // save as grayscale texture pixel into temp buffer
                         if (depth == 0) { pDepthTexture.get()[idx] = 0; }
                         else { pDepthTexture.get()[idx] = (uint8_t)((float)depth / 4000 * 255); }
+
+                        // save AbImage as grayscale texture pixel into temp buffer
+                        UINT16 abValue = pAbImage[idx];
+                        uint8_t processedAbValue = 0;
+                        if (abValue > 2000) { processedAbValue = 0xFF; }
+                        else { processedAbValue = (uint8_t)((float)abValue / 2000 * 255); }
+
+                        pAbTexture.get()[idx] = processedAbValue;
+
+                        // save the depth of center pixel
+                        if (pHL2ResearchMode->m_reconstructLongThrowPointCloud &&
+                            i == (UINT)(0.35 * resolution.Height) && j == (UINT)(0.5 * resolution.Width)
+                            && pointCloud.size() >= 3)
+                        {
+                            pHL2ResearchMode->m_centerDepth = depth;
+                            if (depth > pHL2ResearchMode->depthCamRoi.depthNearClip && depth < pHL2ResearchMode->depthCamRoi.depthFarClip)
+                            {
+                                std::lock_guard<std::mutex> l(pHL2ResearchMode->mu);
+                                pHL2ResearchMode->m_centerPoint[0] = *(pointCloud.end() - 3);
+                                pHL2ResearchMode->m_centerPoint[1] = *(pointCloud.end() - 2);
+                                pHL2ResearchMode->m_centerPoint[2] = *(pointCloud.end() - 1);
+                            }
+                        }
                     }
                 }
 
@@ -435,10 +512,23 @@ namespace winrt::HL2UnityPlugin::implementation
                 {
                     std::lock_guard<std::mutex> l(pHL2ResearchMode->mu);
 
+                    // save point cloud
+                    if (pHL2ResearchMode->m_reconstructLongThrowPointCloud) 
+                    {
+                        if (!pHL2ResearchMode->m_longThrowPointCloud)
+                        {
+                            OutputDebugString(L"Create Space for point cloud (long throw)...\n");
+                            pHL2ResearchMode->m_longThrowPointCloud = new float[outBufferCount * 3];
+                        }
+
+                        memcpy(pHL2ResearchMode->m_longThrowPointCloud, pointCloud.data(), pointCloud.size() * sizeof(float));
+                        pHL2ResearchMode->m_longThrowPointcloudLength = pointCloud.size();
+                    }
+
                     // save raw depth map
                     if (!pHL2ResearchMode->m_longDepthMap)
                     {
-                        OutputDebugString(L"Create Space for depth map...\n");
+                        OutputDebugString(L"Create Space for long throw depth map...\n");
                         pHL2ResearchMode->m_longDepthMap = new UINT16[outBufferCount];
                     }
                     memcpy(pHL2ResearchMode->m_longDepthMap, pDepth, outBufferCount * sizeof(UINT16));
@@ -446,25 +536,42 @@ namespace winrt::HL2UnityPlugin::implementation
                     // save pre-processed depth map texture (for visualization)
                     if (!pHL2ResearchMode->m_longDepthMapTexture)
                     {
-                        OutputDebugString(L"Create Space for depth map texture...\n");
+                        OutputDebugString(L"Create Space for long throw depth map texture...\n");
                         pHL2ResearchMode->m_longDepthMapTexture = new UINT8[outBufferCount];
                     }
                     memcpy(pHL2ResearchMode->m_longDepthMapTexture, pDepthTexture.get(), outBufferCount * sizeof(UINT8));
-                }
 
+                    // save raw AbImage
+                    if (!pHL2ResearchMode->m_longAbImage)
+                    {
+                        OutputDebugString(L"Create Space for long AbImage...\n");
+                        pHL2ResearchMode->m_longAbImage = new UINT16[outBufferCount];
+                    }
+                    memcpy(pHL2ResearchMode->m_longAbImage, pAbImage, outBufferCount * sizeof(UINT16));
+
+                    // save pre-processed AbImage texture (for visualization)
+                    if (!pHL2ResearchMode->m_longAbImageTexture)
+                    {
+                        OutputDebugString(L"Create Space for long AbImage texture...\n");
+                        pHL2ResearchMode->m_longAbImageTexture = new UINT8[outBufferCount];
+                    }
+                    memcpy(pHL2ResearchMode->m_longAbImageTexture, pAbTexture.get(), outBufferCount * sizeof(UINT8));
+                }
+                pHL2ResearchMode->m_longAbImageTextureUpdated = true;
                 pHL2ResearchMode->m_longDepthMapTextureUpdated = true;
+                if (pHL2ResearchMode->m_reconstructLongThrowPointCloud) pHL2ResearchMode->m_longThrowPointCloudUpdated = true;
 
                 pDepthTexture.reset();
 
                 // release space
-                if (pDepthFrame) {
+                if (pDepthFrame) 
+                {
                     pDepthFrame->Release();
                 }
                 if (pDepthSensorFrame)
                 {
                     pDepthSensorFrame->Release();
                 }
-
             }
         }
         catch (...) {}
@@ -536,7 +643,9 @@ namespace winrt::HL2UnityPlugin::implementation
 
                 auto ts_left = PerceptionTimestampHelper::FromSystemRelativeTargetTime(HundredsOfNanoseconds(checkAndConvertUnsigned(timestamp_left.HostTicks)));
                 auto ts_right = PerceptionTimestampHelper::FromSystemRelativeTargetTime(HundredsOfNanoseconds(checkAndConvertUnsigned(timestamp_right.HostTicks)));
-                auto rigToWorld_l = pHL2ResearchMode->m_locator.TryLocateAtTimestamp(ts_left, pHL2ResearchMode->m_refFrame);
+                
+                // uncomment the block below if their transform is needed
+                /*auto rigToWorld_l = pHL2ResearchMode->m_locator.TryLocateAtTimestamp(ts_left, pHL2ResearchMode->m_refFrame);
                 auto rigToWorld_r = rigToWorld_l;
                 if (ts_left.TargetTime() != ts_right.TargetTime()) {
                     rigToWorld_r = pHL2ResearchMode->m_locator.TryLocateAtTimestamp(ts_right, pHL2ResearchMode->m_refFrame);
@@ -548,7 +657,7 @@ namespace winrt::HL2UnityPlugin::implementation
                 }
                 
                 auto LfToWorld = pHL2ResearchMode->m_LFCameraPoseInvMatrix * SpatialLocationToDxMatrix(rigToWorld_l);
-				auto RfToWorld = pHL2ResearchMode->m_RFCameraPoseInvMatrix * SpatialLocationToDxMatrix(rigToWorld_r);
+				auto RfToWorld = pHL2ResearchMode->m_RFCameraPoseInvMatrix * SpatialLocationToDxMatrix(rigToWorld_r);*/
 
                 // save data
                 {
@@ -556,12 +665,6 @@ namespace winrt::HL2UnityPlugin::implementation
 
                     pHL2ResearchMode->m_lastSpatialFrame.LFFrame.timestamp = timestamp_left.HostTicks;
                     pHL2ResearchMode->m_lastSpatialFrame.RFFrame.timestamp = timestamp_right.HostTicks;
-
-                    /*auto ts_ft_l = pHL2ResearchMode->m_converter.RelativeTicksToAbsoluteTicks(HundredsOfNanoseconds((long long)timestamp_left.HostTicks));
-                    auto ts_ft_r = pHL2ResearchMode->m_converter.RelativeTicksToAbsoluteTicks(HundredsOfNanoseconds((long long)timestamp_right.HostTicks));
-
-                    pHL2ResearchMode->m_lastSpatialFrame.LFFrame.timestamp_ft = ts_ft_l.count();
-                    pHL2ResearchMode->m_lastSpatialFrame.RFFrame.timestamp_ft = ts_ft_r.count();*/
 
                     pHL2ResearchMode->m_lastSpatialFrame.LFFrame.timestamp_ft = ts_left.TargetTime().time_since_epoch().count();
                     pHL2ResearchMode->m_lastSpatialFrame.RFFrame.timestamp_ft = ts_right.TargetTime().time_since_epoch().count();
@@ -831,7 +934,11 @@ namespace winrt::HL2UnityPlugin::implementation
 
     inline bool HL2ResearchMode::ShortAbImageTextureUpdated() { return m_shortAbImageTextureUpdated; }
 
+    inline bool HL2ResearchMode::LongAbImageTextureUpdated() { return m_longAbImageTextureUpdated; }
+
     inline bool HL2ResearchMode::PointCloudUpdated() { return m_pointCloudUpdated; }
+
+    inline bool HL2ResearchMode::LongThrowPointCloudUpdated() { return m_longThrowPointCloudUpdated; }
 
     inline int HL2ResearchMode::GetLongDepthBufferSize() { return m_longDepthBufferSize; }
 
@@ -940,6 +1047,16 @@ namespace winrt::HL2UnityPlugin::implementation
         {
             delete[] m_shortAbImageTexture;
             m_shortAbImageTexture = nullptr;
+        }
+        if (m_longAbImage)
+        {
+            delete[] m_longAbImage;
+            m_longAbImage = nullptr;
+        }
+        if (m_longAbImageTexture)
+        {
+            delete[] m_longAbImageTexture;
+            m_longAbImageTexture = nullptr;
         }
 
         if (m_lastSpatialFrame.LFFrame.image) 
@@ -1054,6 +1171,19 @@ namespace winrt::HL2UnityPlugin::implementation
         return tempBuffer;
     }
 
+
+    com_array<uint16_t> HL2ResearchMode::GetLongAbImageBuffer()
+    {
+        std::lock_guard<std::mutex> l(mu);
+        if (!m_longAbImage)
+        {
+            return com_array<uint16_t>();
+        }
+        com_array<UINT16> tempBuffer = com_array<UINT16>(m_longAbImage, m_longAbImage + m_longDepthBufferSize);
+
+        return tempBuffer;
+    }
+
     com_array<uint8_t> HL2ResearchMode::GetLongDepthMapTextureBuffer()
     {
         std::lock_guard<std::mutex> l(mu);
@@ -1064,6 +1194,20 @@ namespace winrt::HL2UnityPlugin::implementation
         com_array<UINT8> tempBuffer = com_array<UINT8>(std::move_iterator(m_longDepthMapTexture), std::move_iterator(m_longDepthMapTexture + m_longDepthBufferSize));
 
         m_longDepthMapTextureUpdated = false;
+        return tempBuffer;
+    }
+
+    // Get depth map texture buffer. (For visualization purpose)
+    com_array<uint8_t> HL2ResearchMode::GetLongAbImageTextureBuffer()
+    {
+        std::lock_guard<std::mutex> l(mu);
+        if (!m_longAbImageTexture)
+        {
+            return com_array<UINT8>();
+        }
+        com_array<UINT8> tempBuffer = com_array<UINT8>(std::move_iterator(m_longAbImageTexture), std::move_iterator(m_longAbImageTexture + m_longDepthBufferSize));
+
+        m_longAbImageTextureUpdated = false;
         return tempBuffer;
     }
 
@@ -1164,12 +1308,34 @@ namespace winrt::HL2UnityPlugin::implementation
     com_array<float> HL2ResearchMode::GetPointCloudBuffer()
     {
         std::lock_guard<std::mutex> l(mu);
-        if (m_pointcloudLength == 0)
+        if (!m_reconstructShortThrowPointCloud || m_pointcloudLength == 0)
         {
             return com_array<float>();
         }
         com_array<float> tempBuffer = com_array<float>(std::move_iterator(m_pointCloud), std::move_iterator(m_pointCloud + m_pointcloudLength));
         m_pointCloudUpdated = false;
+        return tempBuffer;
+    }
+
+    // Get the buffer for point cloud in the form of float array.
+    // There will be 3n elements in the array where the 3i, 3i+1, 3i+2 element correspond to x, y, z component of the i'th point. (i->[0,n-1])
+    com_array<float> HL2ResearchMode::GetLongThrowPointCloudBuffer()
+    {
+        std::lock_guard<std::mutex> l(mu);
+        {
+            std::stringstream ss;
+            ss << "m_reconstructLongThrowPointCloud: " << m_reconstructLongThrowPointCloud << "\n";
+            ss << "m_pointcloudLength: " << m_longThrowPointcloudLength << "\n";
+            std::string msg = ss.str();
+            std::wstring widemsg = std::wstring(msg.begin(), msg.end());
+            OutputDebugString(widemsg.c_str());
+        }
+        if (!m_reconstructLongThrowPointCloud || m_longThrowPointcloudLength == 0)
+        {
+            return com_array<float>();
+        };
+        com_array<float> tempBuffer = com_array<float>(std::move_iterator(m_longThrowPointCloud), std::move_iterator(m_longThrowPointCloud + m_longThrowPointcloudLength));
+        m_longThrowPointCloudUpdated = false;
         return tempBuffer;
     }
 
@@ -1180,14 +1346,6 @@ namespace winrt::HL2UnityPlugin::implementation
         com_array<float> centerPoint = com_array<float>(std::move_iterator(m_centerPoint), std::move_iterator(m_centerPoint + 3));
 
         return centerPoint;
-    }
-
-    com_array<float> HL2ResearchMode::GetDepthSensorPosition()
-    {
-        std::lock_guard<std::mutex> l(mu);
-        com_array<float> depthSensorPos = com_array<float>(std::move_iterator(m_depthSensorPosition), std::move_iterator(m_depthSensorPosition + 3));
-
-        return depthSensorPos;
     }
 
     // Set the reference coordinate system. Need to be set before the sensor loop starts; otherwise, default coordinate will be used.

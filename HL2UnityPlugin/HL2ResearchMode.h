@@ -39,8 +39,8 @@ namespace winrt::HL2UnityPlugin::implementation
         void InitializeGyroSensor();
         void InitializeMagSensor();
 
-        void StartDepthSensorLoop();
-        void StartLongDepthSensorLoop();
+        void StartDepthSensorLoop(bool reconstructPointCloud = true);
+        void StartLongDepthSensorLoop(bool reconstructPointCloud = true);
         void StartSpatialCamerasFrontLoop();
         void StartAccelSensorLoop();
         void StartGyroSensorLoop();
@@ -50,7 +50,9 @@ namespace winrt::HL2UnityPlugin::implementation
 
         bool DepthMapTextureUpdated();
         bool ShortAbImageTextureUpdated();
+        bool LongAbImageTextureUpdated();
         bool PointCloudUpdated();
+        bool LongThrowPointCloudUpdated();
         bool LongDepthMapTextureUpdated();
 		bool LFImageUpdated();
 		bool RFImageUpdated();
@@ -66,6 +68,8 @@ namespace winrt::HL2UnityPlugin::implementation
         com_array<uint8_t> GetDepthMapTextureBuffer();
         com_array<uint16_t> GetShortAbImageBuffer();
         com_array<uint8_t> GetShortAbImageTextureBuffer();
+        com_array<uint16_t> GetLongAbImageBuffer();
+        com_array<uint8_t> GetLongAbImageTextureBuffer();
         com_array<uint16_t> GetLongDepthMapBuffer();
         com_array<uint8_t> GetLongDepthMapTextureBuffer();
         com_array<uint8_t> GetLFCameraBuffer(int64_t& ts);
@@ -77,17 +81,21 @@ namespace winrt::HL2UnityPlugin::implementation
         com_array<float> GetMagSample();
 
         com_array<float> GetPointCloudBuffer();
+        com_array<float> GetLongThrowPointCloudBuffer();
         com_array<float> GetCenterPoint();
-        com_array<float> GetDepthSensorPosition();
         std::mutex mu;
 
     private:
         float* m_pointCloud = nullptr;
         int m_pointcloudLength = 0;
+        float* m_longThrowPointCloud = nullptr;
+        int m_longThrowPointcloudLength = 0;
         UINT16* m_depthMap = nullptr;
         UINT8* m_depthMapTexture = nullptr;
         UINT16* m_shortAbImage = nullptr;
         UINT8* m_shortAbImageTexture = nullptr;
+        UINT16* m_longAbImage = nullptr;
+        UINT8* m_longAbImageTexture = nullptr;
         UINT16* m_longDepthMap = nullptr;
         UINT8* m_longDepthMapTexture = nullptr;
 
@@ -123,23 +131,29 @@ namespace winrt::HL2UnityPlugin::implementation
         std::atomic_int m_RFbufferSize = 0;
         std::atomic_uint16_t m_centerDepth = 0;
         float m_centerPoint[3]{ 0,0,0 };
-        float m_depthSensorPosition[3]{ 0,0,0 };
+
         std::atomic_bool m_depthSensorLoopStarted = false;
         std::atomic_bool m_longDepthSensorLoopStarted = false;
         std::atomic_bool m_spatialCamerasFrontLoopStarted = false;
         std::atomic_bool m_accelSensorLoopStarted = false;
         std::atomic_bool m_gyroSensorLoopStarted = false;
         std::atomic_bool m_magSensorLoopStarted = false;
+
         std::atomic_bool m_depthMapTextureUpdated = false;
         std::atomic_bool m_shortAbImageTextureUpdated = false;
+        std::atomic_bool m_longAbImageTextureUpdated = false;
         std::atomic_bool m_longDepthMapTextureUpdated = false;
         std::atomic_bool m_pointCloudUpdated = false;
+        std::atomic_bool m_longThrowPointCloudUpdated = false;
         std::atomic_bool m_useRoiFilter = false;
 		std::atomic_bool m_LFImageUpdated = false;
 		std::atomic_bool m_RFImageUpdated = false;
         std::atomic_bool m_accelSampleUpdated = false;
         std::atomic_bool m_gyroSampleUpdated = false;
         std::atomic_bool m_magSampleUpdated = false;
+
+        std::atomic_bool m_reconstructShortThrowPointCloud = false;
+        std::atomic_bool m_reconstructLongThrowPointCloud = false;
 
         float m_roiBound[3]{ 0,0,0 };
         float m_roiCenter[3]{ 0,0,0 };
@@ -170,7 +184,7 @@ namespace winrt::HL2UnityPlugin::implementation
         static DirectX::XMMATRIX HL2ResearchMode::SpatialLocationToDxMatrix(Windows::Perception::Spatial::SpatialLocation location);
         struct DepthCamRoi {
             float kRowLower = 0.2;
-            float kRowUpper = 0.5;
+            float kRowUpper = 0.55;
             float kColLower = 0.3;
             float kColUpper = 0.7;
             UINT16 depthNearClip = 200; // Unit: mm

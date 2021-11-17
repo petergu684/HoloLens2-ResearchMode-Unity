@@ -10,9 +10,10 @@ This Unity project shows
 - Unity 2019.4*
 - Visual Studio 2019
 
-\* To use it in Unity 2020 or later,
+\* To use it in Unity 2020.1 - 2021.1,
 - Open Unity project and install XRSDK (Project Settings-XR Plugin Management-install, then tick "Windows Mixed Reality")
 - Select MixedRealityToolkit Gameobject in the Hierarchy. In the Inspector, change the mixed reality configuration profile to `New XRSDKConfigurationProfile` (or `DefaultXRSDKConfigurationProfile`).
+- Point cloud sample not supported in Unity 2021.2 or later since OpenXR becomes the only supported pipeline with different way of obtaining the Unity world coordiante frame. Other functions shouldn't be influenced.
 
 # Build
 1. Open this folder in Unity.
