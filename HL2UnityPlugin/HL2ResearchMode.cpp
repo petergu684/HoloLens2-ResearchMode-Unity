@@ -497,7 +497,7 @@ namespace winrt::HL2UnityPlugin::implementation
                             && pointCloud.size() >= 3)
                         {
                             pHL2ResearchMode->m_centerDepth = depth;
-                            if (depth > pHL2ResearchMode->depthCamRoi.depthNearClip && depth < pHL2ResearchMode->depthCamRoi.depthFarClip)
+                            if (depth > 200)
                             {
                                 std::lock_guard<std::mutex> l(pHL2ResearchMode->mu);
                                 pHL2ResearchMode->m_centerPoint[0] = *(pointCloud.end() - 3);
