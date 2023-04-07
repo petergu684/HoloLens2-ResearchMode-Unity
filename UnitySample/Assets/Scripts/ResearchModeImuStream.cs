@@ -91,7 +91,7 @@ public class ResearchModeImuStream : MonoBehaviour
             // Positive directions
             //  accelSample[0] : Down direction
             //  accelSample[1] : Back direction
-            //  accelSample[0] : Right direction
+            //  accelSample[2] : Right direction
             vector = new Vector3(
                 accelSample[2],
                 -1.0f * accelSample[0],

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using System;
 using System.Runtime.InteropServices;
+using TMPro;
 
 #if ENABLE_WINMD_SUPPORT
 using HL2UnityPlugin;
@@ -55,7 +56,7 @@ public class ResearchModeVideoStream : MonoBehaviour
     private Texture2D RFMediaTexture = null;
     private byte[] RFFrameData = null;
 
-    public UnityEngine.UI.Text text;
+    public TextMeshPro text;
 
     public GameObject pointCloudRendererGo;
     public Color pointColor = Color.white;

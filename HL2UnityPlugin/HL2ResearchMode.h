@@ -21,6 +21,8 @@ namespace winrt::HL2UnityPlugin::implementation
     struct HL2ResearchMode : HL2ResearchModeT<HL2ResearchMode>
     {
         HL2ResearchMode();
+        static HRESULT CheckCamConsent();
+        static HRESULT CheckImuConsent();
 
         UINT16 GetCenterDepth();
         int GetDepthBufferSize();

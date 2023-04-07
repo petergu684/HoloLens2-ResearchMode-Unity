@@ -41,8 +41,12 @@ public class TCPClient : MonoBehaviour
     public DataReader dr;
     private async void StartCoonection()
     {
-        if (socket != null) socket.Dispose();
-
+        if (socket != null)
+        {
+            socket.Dispose();
+            ConnectionStatusLED.material.color = Color.red;
+        }
+        Debug.Log("Connecting to " + hostIPAddress);
         try
         {
             socket = new StreamSocket();
@@ -73,6 +77,7 @@ public class TCPClient : MonoBehaviour
 
         socket?.Dispose();
         connected = false;
+        ConnectionStatusLED.material.color = Color.red;
     }
 
     bool lastMessageSent = true;

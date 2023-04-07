@@ -595,11 +595,11 @@ PlayerSettings:
   m_MobileRenderingPath: 1
   metroPackageName: Template3D
   metroPackageVersion: 1.0.0.0
-  metroCertificatePath: Assets\WSATestCertificate.pfx
+  metroCertificatePath: Assets/WSATestCertificate.pfx
   metroCertificatePassword: 
   metroCertificateSubject: Wenhao
   metroCertificateIssuer: Wenhao
-  metroCertificateNotAfter: 800884053b79d801
+  metroCertificateNotAfter: 00f9567c6588da01
   metroApplicationDescription: Template_3D
   wsaImages: {}
   metroTileShortName: HL2ResearchModeUnitySample
